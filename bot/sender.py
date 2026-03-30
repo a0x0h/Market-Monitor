@@ -119,6 +119,41 @@ class TelegramSender:
         if result is None:
             await self.send_text(trimmed, pin=pin)
 
+    async def send_photo_and_video(self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False) -> None:
+        from aiogram.types import InputMediaPhoto, InputMediaVideo, BufferedInputFile, FSInputFile
+
+        trimmed_caption = _trim(caption, CAPTION_LIMIT)
+        
+        photo_file = BufferedInputFile(photo_bytes, filename="tweet.jpg")
+        if isinstance(video_path_or_bytes, str):
+            video_file = FSInputFile(video_path_or_bytes)
+        else:
+            video_file = BufferedInputFile(video_path_or_bytes, filename="video.mp4")
+
+        media = [
+            InputMediaPhoto(media=photo_file, caption=trimmed_caption, parse_mode="HTML"),
+            InputMediaVideo(media=video_file)
+        ]
+
+        async def _do():
+            return await self.bot.send_media_group(
+                chat_id=self.channel_id,
+                media=media,
+            )
+
+        result_messages = await self._retry(_do)
+        
+        if pin and result_messages:
+            try:
+                # pin the first message in the group
+                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result_messages[0].message_id)
+            except Exception as e:
+                logger.warning(f"Failed to pin album message: {e}")
+                
+        if not result_messages:
+            # fallback if media group fails
+            await self.send_photo(photo_bytes, caption, pin=pin)
+
     async def send_media_group(self, images: list[bytes], caption: str) -> None:
         """Send up to 10 images as a media group (album)."""
         from aiogram.types import InputMediaPhoto

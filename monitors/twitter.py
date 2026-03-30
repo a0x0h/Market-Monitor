@@ -98,19 +98,29 @@ def build_tweet_caption(
     tweet_url: str,
     pub_date: datetime,
     ai_result: dict,
+    should_pin: bool = False,
 ) -> str:
     urgency_emoji = ai_result.get("urgency_emoji", "📌")
     original_url = _original_tweet_url(tweet_url)
     translation = escape_html(ai_result.get("translation", "ترجمه در دسترس نیست"))
     clean_text = escape_html(tweet_text[:1200])
-    date_time = pub_date.strftime("%Y-%m-%d %H:%M UTC")
+    date_time = pub_date.strftime("[ %H:%M - %d %b %Y UTC ]")
+
+    analysis_text = ai_result.get("analysis", "")
+    sentiment_emoji = ai_result.get("sentiment_emoji", "⬜")
+    
+    analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if should_pin and analysis_text else ""
+
+    date_link = f"<a href='{original_url}'>{date_time}</a>"
 
     return (
         f"{urgency_emoji} <a href='{original_url}'>@{username}</a>\n"
         f"{clean_text}\n"
         f"━━\n"
         f"{translation}\n\n"
-        f"{date_time}\n\n"
+        f"━━\n"
+        f"{analysis_block}\n"
+        f"{date_link}\n\n"
         "#Twitter"
     )
 
@@ -181,8 +191,12 @@ class TwitterMonitor:
             pub_date = datetime.now(timezone.utc)
 
         ai_result = await analyze_tweet(tweet_text)
+        
+        president_keywords = ["president", "djt", "donald", "trump"]
+        should_pin = any(kw in tweet_text.lower() for kw in president_keywords) or account.get("username", "").lower() == "realdonaldtrump"
+
         caption = build_tweet_caption(
-            account.get("username", "unknown"), tweet_text, tweet_url, pub_date, ai_result
+            account.get("username", "unknown"), tweet_text, tweet_url, pub_date, ai_result, should_pin
         )
 
         # ── Screenshot via Playwright (best quality, real browser render) ──────
@@ -220,13 +234,22 @@ class TwitterMonitor:
             )
 
         # ── Send card + optional video ─────────────────────────────────────────
-        await self.sender.send_photo(card_bytes, caption, pin=True)
 
         if video_url:
             video_bytes = await fetcher.download_bytes(video_url)
-            if video_bytes:
-                await asyncio.sleep(0.5)
-                await self.sender.send_video(video_bytes, "", pin=True)
+            if video_bytes and card_bytes:
+                await self.sender.send_photo_and_video(card_bytes, video_bytes, caption, pin=should_pin)
+            elif video_bytes:
+                await self.sender.send_video(video_bytes, caption, pin=should_pin)
+            elif card_bytes:
+                await self.sender.send_photo(card_bytes, caption, pin=should_pin)
+            else:
+                await self.sender.send_text(caption, pin=should_pin)
+        else:
+            if card_bytes:
+                await self.sender.send_photo(card_bytes, caption, pin=should_pin)
+            else:
+                await self.sender.send_text(caption, pin=should_pin)
 
         # ── Append to EventStore ───────────────────────────────────────────────
         event_store.append(NewsEvent(

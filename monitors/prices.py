@@ -51,7 +51,8 @@ async def _fetch_okex_usdt_irt(session: aiohttp.ClientSession) -> tuple[float | 
             for item in data:
                 if item.get("asset") == "USDT":
                     buy_amt = float(item.get("buyAmt", 0))
-                    return buy_amt, buy_amt  # returning buy_amt for both so pct_change defaults to 0 if we don't have prev
+                    price_change = float(item.get("priceChange", 0))
+                    return buy_amt, price_change
             return None, None
     except Exception as e:
         logger.warning(f"Failed to fetch OK-Ex USDT: {e}")
@@ -89,12 +90,12 @@ async def fetch_all_prices() -> dict[str, dict]:
         }
 
     if not isinstance(usdt_result, Exception) and usdt_result is not None:
-        usdt_price, usdt_prev = usdt_result
+        usdt_price, usdt_pct_change = usdt_result
         if usdt_price is not None:
             prices["USDT-IRT"] = {
                 "price": usdt_price,
-                "prev_close": usdt_prev,
-                "pct_change": 0.0
+                "prev_close": usdt_price,
+                "pct_change": usdt_pct_change
             }
 
     return prices

@@ -192,6 +192,16 @@ if _BOTASAURUS_AVAILABLE:
         driver.get(embed_url, bypass_cloudflare=True)
         driver.sleep(3)
 
+        # Close accept cookie dialog if present before taking screenshot
+        try:
+            driver.run_js("""
+                var closeBtn = document.querySelector("#cookiescript_close");
+                if (closeBtn) closeBtn.click();
+            """)
+            driver.sleep(1)
+        except Exception as e:
+            logger.debug("No cookie dialog to close or error: %s", e)
+
         out_dir = "screenshots"
         os.makedirs(out_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

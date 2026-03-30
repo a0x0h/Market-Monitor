@@ -3,7 +3,8 @@ import logging
 import sys
 
 import pytz
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, ContentType
 from aiogram.client.default import DefaultBotProperties
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -55,6 +56,14 @@ async def main() -> None:
     )
     dp = Dispatcher()
 
+    @dp.message(F.pinned_message)
+    @dp.channel_post(F.pinned_message)
+    async def delete_pinned_system_message(message: Message):
+        try:
+            await message.delete()
+        except Exception as e:
+            logger.warning(f"Failed to delete pinned system message: {e}")
+
     sender = TelegramSender(bot, Config.TELEGRAM_CHANNEL_ID)
     truthsocial_monitor = TruthSocialMonitor(sender)
     price_monitor = PriceMonitor(sender)
@@ -96,7 +105,7 @@ async def main() -> None:
     logger.info("Bot is running. Press Ctrl+C to stop.")
 
     try:
-        await dp.start_polling(bot, allowed_updates=[])
+        await dp.start_polling(bot, allowed_updates=["message", "channel_post"])
     finally:
         scheduler.shutdown(wait=False)        
         await truthsocial_monitor.close()

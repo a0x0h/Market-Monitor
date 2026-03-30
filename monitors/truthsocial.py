@@ -190,11 +190,10 @@ class TruthSocialMonitor:
             except Exception as e:
                 logger.error(f"Failed to download video: {e}")
                 
-        if not video_path:
-            # Take screenshot only if no video was downloaded
-            logger.info(f"Taking screenshot for tweet {tweet_id}")
-            ts_url = f"https://truthsocial.com/@realDonaldTrump/posts/{tweet_id}"
-            screenshot_bytes = await screenshot_module.screenshot_truthsocial(ts_url)
+        # Always take screenshot
+        logger.info(f"Taking screenshot for tweet {tweet_id}")
+        ts_url = f"https://truthsocial.com/@realDonaldTrump/posts/{tweet_id}"
+        screenshot_bytes = await screenshot_module.screenshot_truthsocial(ts_url)
 
         # formatting date
         created_at_str = tweet.get("created_at")
@@ -208,19 +207,32 @@ class TruthSocialMonitor:
                 dt_tehran = dt.astimezone(tz)
                 date_str = dt_tehran.strftime("[ %H:%M - %d %b %Y (IR) ]")
             except:
-                date_str = tehran_now_str()
+                date_str = f"[ {tehran_now_str()} ]"
         else:
-            date_str = tehran_now_str()
+            date_str = f"[ {tehran_now_str()} ]"
+
+        date_link = f"<a href='{ts_url}'>{date_str}</a>"
+
+        # Check if the text contains president-related keywords to decide pinning and analysis
+        president_keywords = ["president", "djt", "donald", "trump"]
+        should_pin = any(kw in clean_text.lower() for kw in president_keywords)
 
         urgency_emoji = analysis.get("urgency_emoji", "🚨")
         translation = analysis.get("translation", "ترجمه در دسترس نیست.")
+        analysis_text = analysis.get("analysis", "")
+        sentiment_emoji = analysis.get("sentiment_emoji", "⬜")
+
+        # Include the oil sentiment and analysis block if it's considered a president tweet
+        analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if should_pin and analysis_text else ""
 
         msg = (
             f"{urgency_emoji} <b>#New_Truth by Donald J. Trump</b>\n\n"
             f"<i>{escape_html(clean_text)}</i>\n\n"
             f"━━━━━\n"
             f"🇮🇷 {escape_html(translation)}\n\n"
-            f"{date_str}\n"
+            f"━━━━━\n"
+            f"{analysis_block}\n"
+            f"{date_link}\n"
         )
 
         event_store.append(
@@ -241,14 +253,17 @@ class TruthSocialMonitor:
             if len(msg) > 1024:
                 msg = (
                     f"{urgency_emoji} <b>#New_Truth by Donald J. Trump</b>\n\n"
+                    f"{analysis_block}"
                     f"🇮🇷 {escape_html(translation)}\n\n"
-                    f"{date_str}"
+                    f"{date_link}"
                 )
-            if video_path:
-                await self.sender.send_video(
+            
+            if screenshot_bytes and video_path:
+                await self.sender.send_photo_and_video(
+                    screenshot_bytes,
                     video_path,
                     msg,
-                    pin=True
+                    pin=should_pin
                 )
                 # Cleanup downloaded video
                 try:
@@ -256,14 +271,26 @@ class TruthSocialMonitor:
                     logger.info(f"Cleaned up downloaded video {video_path}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up video file: {e}")
-
             elif screenshot_bytes:
                 await self.sender.send_photo(
                     screenshot_bytes,
                     msg,
-                    pin=True
+                    pin=should_pin
                 )
+            elif video_path:
+                await self.sender.send_video(
+                    video_path,
+                    msg,
+                    pin=should_pin
+                )
+                # Cleanup downloaded video
+                try:
+                    os.remove(video_path)
+                    logger.info(f"Cleaned up downloaded video {video_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up video file: {e}")
             else:
-                await self.sender.send_text(msg, pin=True)
+                await self.sender.send_text(msg, pin=should_pin)
+
         except Exception as e:
             logger.error(f"Error sending Truth Social post to Telegram: {e}")
