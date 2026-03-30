@@ -1,6 +1,8 @@
 import json
 import logging
 import asyncio
+import re
+import time
 from typing import Optional
 
 import google.generativeai as genai
@@ -9,6 +11,24 @@ from groq import AsyncGroq
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+# ── Groq fallback model chain (tried in order on failure/rate-limit) ─────────
+_GROQ_MODELS = [
+    "llama-3.3-70b-versatile",   # best quality
+    "mixtral-8x7b-32768",        # good, different architecture
+    "llama-3.1-8b-instant",      # smaller, higher rate limits
+    "gemma2-9b-it",              # last resort
+]
+
+# ── Gemini model chain (each has its own free-tier RPD quota) ─────────────────
+_GEMINI_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+]
+
+# Per-model quota-exceeded timestamps (epoch seconds); 0 = available
+_gemini_quota_exceeded_until: dict[str, float] = {}
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 ANALYSIS_PROMPT = """
@@ -26,9 +46,14 @@ JSON schema:
   "keywords": ["keyword1", "keyword2"]
 }
 
-Rules:
-- CRITICAL LANGUAGE FIREWALL: "translation" and "analysis" MUST BE 100% PURE PERSIAN (FARSI) ALPHABET ONLY. 
-- FATAL ERROR IF VIOLATED: NEVER under ANY circumstances output Chinese, Japanese, Korean, or Kanji characters (e.g. 影响, 事件, etc.). 
+ABSOLUTE LANGUAGE RULES — NO EXCEPTIONS:
+- The "translation" and "analysis" fields must contain ONLY Persian (Farsi) script (ا ب پ ت ث ج چ ح خ ...).
+- STRICTLY FORBIDDEN in these fields: Chinese (中文/漢字), Japanese (かな/カナ), Korean (한글), Russian/Cyrillic (кириллица), or ANY other non-Persian script.
+- If the tweet contains words written in Chinese, Japanese, Korean, or Russian script, TRANSLITERATE them into Persian phonetics. Example: "习近平" → "شی جین‌پینگ", "Путин" → "پوتین".
+- Allowed characters: Persian/Arabic letters, spaces, Persian punctuation، ؟ ؛, numbers (0–9 or ۰–۹), and standard punctuation (. , ! ? - ( )).
+- Any violation of the above rules is a critical error. Re-check your output before responding.
+
+Additional rules:
 - The translation must be perfectly natural, accurate, and completely avoid robotic or machine-translation artifacts.
 - If providing an "analysis", it must explain the real impact on oil prices or regional stability and Iran. If trivial or unrelated, return an empty string "" for "analysis".
 - sentiment_emoji: use 🟢 if the tweet implies oil prices will go UP, 🔴 if prices will go DOWN, and ⬜ if NEUTRAL.
@@ -37,16 +62,42 @@ Rules:
 - urgency NORMAL = routine updates / analysis
 """
 
-# ── Gemini setup ─────────────────────────────────────────────────────────────
+# ── Regex to detect forbidden scripts in Persian-only fields ─────────────────
+_FORBIDDEN_SCRIPT_RE = re.compile(
+    "["
+    "\u4e00-\u9fff"    # CJK Unified Ideographs
+    "\u3400-\u4dbf"    # CJK Extension A
+    "\u3000-\u303f"    # CJK Symbols & Punctuation
+    "\u3040-\u30ff"    # Hiragana + Katakana
+    "\uac00-\ud7af"    # Korean Hangul
+    "\u0400-\u04ff"    # Cyrillic
+    "\uff00-\uffef"    # Fullwidth Latin / Halfwidth Katakana
+    "]+"
+)
+
+
+def _strip_forbidden_scripts(text: str) -> str:
+    """Remove any CJK / Cyrillic / non-Persian characters that leaked through."""
+    return _FORBIDDEN_SCRIPT_RE.sub("", text).strip()
+
+
+def _clean_text_fields(result: dict) -> dict:
+    """Post-process AI result: strip forbidden scripts from translation/analysis."""
+    for field in ("translation", "analysis"):
+        if isinstance(result.get(field), str):
+            cleaned = _strip_forbidden_scripts(result[field])
+            if cleaned != result[field]:
+                logger.warning(
+                    f"Stripped forbidden characters from '{field}': "
+                    f"{repr(result[field][:80])} → {repr(cleaned[:80])}"
+                )
+            result[field] = cleaned
+    return result
+
+
+# ── Gemini setup ──────────────────────────────────────────────────────────────
 if Config.GEMINI_API_KEY:
     genai.configure(api_key=Config.GEMINI_API_KEY)
-    _gemini_model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        generation_config={"temperature": 0.3, "max_output_tokens": 512},
-        system_instruction=ANALYSIS_PROMPT,
-    )
-else:
-    _gemini_model = None
 
 # ── Groq setup ────────────────────────────────────────────────────────────────
 _groq_client = AsyncGroq(api_key=Config.GROQ_API_KEY) if Config.GROQ_API_KEY else None
@@ -65,106 +116,155 @@ _DEFAULT_RESULT = {
 def _parse_json_response(raw: str) -> dict:
     raw = raw.strip()
     if raw.startswith("```"):
-        # Remove the first ``` block marker entirely
         raw = raw.split("```", 1)[-1]
-        
-        # Remove optional 'json' tag at start
         if raw.startswith("json"):
             raw = raw[4:].strip()
-            
-        # If there's a closing ```, remove it
         if "```" in raw:
             raw = raw.split("```")[0].strip()
 
-    # Sometimes LLMs don't escape double quotes properly inside translation arrays,
-    # or they accidentally insert conversational text outside the JSON boundaries.
-    # We will try to find the strict indices for {...} bounds.
     start_idx = raw.find("{")
     end_idx = raw.rfind("}")
-    
     if start_idx != -1 and end_idx != -1:
         raw = raw[start_idx : end_idx + 1]
 
     try:
         return json.loads(raw)
     except json.JSONDecodeError as decode_error:
-        # If there's an emergency parsing failure, log the raw payload for debugging
         logger.error(f"JSON Parsing failed on string: {repr(raw)}")
         raise decode_error
 
 
+def _is_quota_error(e: Exception) -> bool:
+    err = str(e).lower()
+    return any(kw in err for kw in ("quota", "429", "resource exhausted", "rate limit"))
+
+
 async def _analyze_with_gemini(tweet_text: str) -> Optional[dict]:
-    if not _gemini_model:
+    if not Config.GEMINI_API_KEY:
         return None
-    try:
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: _gemini_model.generate_content(
-                f"Tweet:\n{tweet_text}"
-            ),
-        )
-        return _parse_json_response(response.text)
-    except Exception as e:
-        logger.warning(f"Gemini failed: {e}")
+    now = time.time()
+    loop = asyncio.get_event_loop()
+    for model_name in _GEMINI_MODELS:
+        if now < _gemini_quota_exceeded_until.get(model_name, 0):
+            logger.debug(f"Skipping {model_name}: quota exhausted")
+            continue
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config={"temperature": 0.3, "max_output_tokens": 512},
+                system_instruction=ANALYSIS_PROMPT,
+            )
+            response = await loop.run_in_executor(
+                None,
+                lambda m=model: m.generate_content(f"Tweet:\n{tweet_text}"),
+            )
+            result = _parse_json_response(response.text)
+            logger.debug(f"Used Gemini model {model_name}")
+            return result
+        except Exception as e:
+            if _is_quota_error(e):
+                _gemini_quota_exceeded_until[model_name] = now + 23 * 3600
+                logger.warning(f"Gemini {model_name} quota exhausted, skipping for 23h: {e}")
+                continue
+            logger.warning(f"Gemini {model_name} failed: {e}")
+            return None  # Non-quota error — don't try other Gemini models
+    return None
+
+
+async def _groq_complete(
+    messages: list[dict],
+    temperature: float = 0.3,
+    max_tokens: int = 512,
+) -> Optional[str]:
+    """Try all Groq models in order; return the first successful raw text."""
+    if not _groq_client:
         return None
+    for model in _GROQ_MODELS:
+        try:
+            chat = await _groq_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            logger.debug(f"Used Groq model {model}")
+            return chat.choices[0].message.content
+        except Exception as e:
+            logger.warning(f"Groq model {model} failed: {e}")
+            continue
+    return None
 
 
 async def _analyze_with_groq(tweet_text: str) -> Optional[dict]:
     if not _groq_client:
         return None
+    raw = await _groq_complete(
+        messages=[
+            {"role": "system", "content": ANALYSIS_PROMPT},
+            {"role": "user", "content": f"Tweet:\n{tweet_text}"},
+        ],
+        temperature=0.3,
+        max_tokens=512,
+    )
+    if raw is None:
+        return None
     try:
-        chat = await _groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": ANALYSIS_PROMPT},
-                {"role": "user",   "content": f"Tweet:\n{tweet_text}"},
-            ],
-            temperature=0.3,
-            max_tokens=512,
-        )
-        return _parse_json_response(chat.choices[0].message.content)
+        return _parse_json_response(raw)
     except Exception as e:
-        logger.warning(f"Groq failed: {e}")
+        logger.warning(f"Groq JSON parse failed: {e}")
         return None
 
 
 async def analyze_tweet(tweet_text: str) -> dict:
     """
-    Primary: Gemini 1.5 Flash
-    Fallback: Groq Llama 3.3
+    Primary:    Gemini 2.0 Flash → 1.5 Flash → 1.5 Flash-8B (per-model quota tracking)
+    Fallback:   Groq llama-3.3-70b → mixtral-8x7b → llama-3.1-8b → gemma2-9b
     Last resort: default neutral result
     """
     result = await _analyze_with_gemini(tweet_text)
     if result:
-        logger.debug("Used Gemini for analysis")
-        return result
+        return _clean_text_fields(result)
 
     result = await _analyze_with_groq(tweet_text)
     if result:
-        logger.debug("Used Groq as fallback")
-        return result
+        return _clean_text_fields(result)
 
     logger.warning("Both AI providers failed, using default result")
     return _DEFAULT_RESULT.copy()
 
 
-async def generate_plain_text(prompt: str) -> str | None:
-    """Public: plain-text Gemini call (no tweet-analysis system prompt)."""
-    """Call Gemini without the tweet-analysis system instruction for free-form text."""
-    if not Config.GEMINI_API_KEY:
-        return None
-    try:
+async def generate_plain_text(prompt: str) -> Optional[str]:
+    """Plain-text Gemini call (no tweet-analysis system prompt), Groq fallback."""
+    if Config.GEMINI_API_KEY:
+        now = time.time()
         loop = asyncio.get_event_loop()
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            generation_config={"temperature": 0.4, "max_output_tokens": 600},
-        )
-        response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
-        return response.text.strip()
-    except Exception as e:
-        logger.warning(f"Gemini plain-text generation failed: {e}")
-        return None
+        for model_name in _GEMINI_MODELS:
+            if now < _gemini_quota_exceeded_until.get(model_name, 0):
+                continue
+            try:
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    generation_config={"temperature": 0.4, "max_output_tokens": 600},
+                )
+                response = await loop.run_in_executor(
+                    None, lambda m=model: m.generate_content(prompt)
+                )
+                return response.text.strip()
+            except Exception as e:
+                if _is_quota_error(e):
+                    _gemini_quota_exceeded_until[model_name] = now + 23 * 3600
+                    logger.warning(f"Gemini {model_name} quota exhausted (plain-text), skipping 23h")
+                    continue
+                logger.warning(f"Gemini {model_name} plain-text failed: {e}")
+                return None
+
+    # Groq fallback
+    raw = await _groq_complete(
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+        max_tokens=600,
+    )
+    return raw.strip() if raw else None
 
 
 async def summarize_daily(events: list[str]) -> str:
@@ -185,17 +285,5 @@ async def summarize_daily(events: list[str]) -> str:
     text = await generate_plain_text(prompt)
     if text:
         return text
-
-    if _groq_client:
-        try:
-            chat = await _groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.4,
-                max_tokens=600,
-            )
-            return chat.choices[0].message.content.strip()
-        except Exception:
-            pass
 
     return "خلاصه‌سازی روزانه در دسترس نیست."

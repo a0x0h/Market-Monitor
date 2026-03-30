@@ -183,20 +183,40 @@ class TruthSocialMonitor:
 
         if video_url:
             logger.info(f"Downloading video for tweet {tweet_id} from {video_url}")
-            try:
-                os.makedirs("media_downloads", exist_ok=True)
-                download_path = f"media_downloads/ts_video_{tweet_id}.mp4"
-                
-                async with aiohttp.ClientSession(cookies=cookies) as session:
-                    async with session.get(video_url) as resp:
-                        if resp.status == 200:
-                            async with aiofiles.open(download_path, 'wb') as f:
-                                await f.write(await resp.read())
-                            video_path = download_path
-                        else:
-                            logger.error(f"Failed to download video, HTTP {resp.status}")
-            except Exception as e:
-                logger.error(f"Failed to download video: {e}")
+            os.makedirs("media_downloads", exist_ok=True)
+            download_path = f"media_downloads/ts_video_{tweet_id}.mp4"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://truthsocial.com/",
+            }
+            timeout = aiohttp.ClientTimeout(total=120, connect=15)
+            for attempt in range(1, 3):
+                try:
+                    async with aiohttp.ClientSession(cookies=cookies, headers=headers) as session:
+                        async with session.get(video_url, timeout=timeout, allow_redirects=True) as resp:
+                            if resp.status == 200:
+                                content_type = resp.headers.get("Content-Type", "")
+                                if "mpegurl" in content_type or video_url.endswith(".m3u8"):
+                                    logger.warning("Video is HLS stream (.m3u8); skipping direct download")
+                                    break
+                                async with aiofiles.open(download_path, "wb") as f:
+                                    async for chunk in resp.content.iter_chunked(65536):
+                                        await f.write(chunk)
+                                video_path = download_path
+                                logger.info(f"Video downloaded to {download_path}")
+                                break
+                            else:
+                                body = await resp.text()
+                                logger.error(
+                                    f"Failed to download video (attempt {attempt}), "
+                                    f"HTTP {resp.status}: {body[:200]}"
+                                )
+                except asyncio.TimeoutError:
+                    logger.error(f"Video download timed out (attempt {attempt})")
+                except Exception as e:
+                    logger.error(f"Failed to download video (attempt {attempt}): {e}")
+                if attempt < 2:
+                    await asyncio.sleep(3)
                 
         # Always take screenshot
         logger.info(f"Taking screenshot for tweet {tweet_id}")
