@@ -36,10 +36,10 @@ class Config:
 
     # ── Price tickers (Yahoo Finance symbols) ────────────────────────────────
     PRICE_TICKERS: dict[str, dict] = {
-        "GC=F":      {"name": "Gold",          "emoji": "🥇",  "unit": "$"},
         "CL=F":      {"name": "WTI Crude",    "emoji": "🛢",  "unit": "$"},
+        "BZ=F":      {"name": "Brent Crude",  "emoji": "🛢",  "unit": "$"},
+        "GC=F":      {"name": "Gold",          "emoji": "🥇",  "unit": "$"},
         "USDT-IRT":  {"name": "Tether",        "emoji": "🪙", "unit": "TMN"},
-        # "BZ=F":      {"name": "Brent Crude",  "emoji": "🛢",  "unit": "$"},
         "DX-Y.NYB":  {"name": "DXY",           "emoji": "💵",  "unit": ""},
         "NG=F":      {"name": "Nat Gas",        "emoji": "⚡",  "unit": "$"},
     }

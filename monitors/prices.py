@@ -106,9 +106,6 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
     lines = []
     alerts = []
 
-    lines.append(f"📊  <b>#Price</b>  |  {utc_now_str()}")
-    lines.append("━━━━━━━━━━━━━━━━━")
-
     for symbol, info in prices.items():
         channel_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
 
