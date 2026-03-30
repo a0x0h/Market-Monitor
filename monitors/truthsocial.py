@@ -233,7 +233,7 @@ class TruthSocialMonitor:
         # Include the oil sentiment and analysis block if it's considered a president tweet
         analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if should_pin and analysis_text else ""
 
-        date_link = f"<a href='{ts_url}'>{date_str} {channel_tag}</a>"
+        date_link = f"{date_str}\n{channel_tag}"
 
         msg = (
             f"{urgency_emoji} <b>#New_Truth by <a href='{ts_url}'>Donald J. Trump</a></b>\n\n"
@@ -241,7 +241,7 @@ class TruthSocialMonitor:
             f"━━━━━\n"
             f"🇮🇷 {escape_html(translation)}\n\n"
             f"━━━━━\n"
-            f"{analysis_block}"
+            f"{analysis_block}\n"
             f"{date_link}"
         )
 
@@ -263,9 +263,9 @@ class TruthSocialMonitor:
             if len(msg) > 1024:
                 msg = (
                     f"{urgency_emoji} <b><a href='{ts_url}'>#New_Truth by Donald J. Trump</a></b>\n\n"
-                    f"🇮🇷 {escape_html(translation)}\n"
-                    f"━━━━━\n"
-                    f"{analysis_block}"
+                    f"🇮🇷 {escape_html(translation)}\n\n"
+                    f"━━━━━\n\n"
+                    f"{analysis_block}\n"
                     f"{date_link}"
                 )
             
