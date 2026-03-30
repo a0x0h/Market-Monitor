@@ -221,17 +221,16 @@ class TruthSocialMonitor:
 
         channel_tag = "📡 @MonitorIR"
 
-        # Check if the text contains president-related keywords to decide pinning and analysis
-        president_keywords = ["president", "djt", "donald", "trump"]
-        should_pin = any(kw in clean_text.lower() for kw in president_keywords)
+        # Check if importance requires pinning
+        should_pin = (analysis.get("urgency", "NORMAL") == "BREAKING" or analysis.get("urgency_emoji") == "🚨")
 
         urgency_emoji = analysis.get("urgency_emoji", "🚨")
         translation = analysis.get("translation", "ترجمه در دسترس نیست.")
         analysis_text = analysis.get("analysis", "")
         sentiment_emoji = analysis.get("sentiment_emoji", "⬜")
 
-        # Include the oil sentiment and analysis block if it's considered a president tweet
-        analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if should_pin and analysis_text else ""
+        # Include the oil sentiment and analysis block if provided
+        analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if analysis_text.strip() else ""
 
         date_link = f"{date_str}\n{channel_tag}"
 

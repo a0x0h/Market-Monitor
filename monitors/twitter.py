@@ -109,7 +109,7 @@ def build_tweet_caption(
     analysis_text = ai_result.get("analysis", "")
     sentiment_emoji = ai_result.get("sentiment_emoji", "⬜")
     
-    analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if should_pin and analysis_text else ""
+    analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if analysis_text.strip() else ""
 
     date_link = f"<a href='{original_url}'>{date_time}</a>"
 
@@ -192,8 +192,7 @@ class TwitterMonitor:
 
         ai_result = await analyze_tweet(tweet_text)
         
-        president_keywords = ["president", "djt", "donald", "trump"]
-        should_pin = any(kw in tweet_text.lower() for kw in president_keywords) or account.get("username", "").lower() == "realdonaldtrump"
+        should_pin = (ai_result.get("urgency", "NORMAL") == "BREAKING" or ai_result.get("urgency_emoji") == "🚨")
 
         caption = build_tweet_caption(
             account.get("username", "unknown"), tweet_text, tweet_url, pub_date, ai_result, should_pin

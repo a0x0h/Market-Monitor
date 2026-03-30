@@ -58,9 +58,12 @@ async def main() -> None:
 
     @dp.message(F.pinned_message)
     @dp.channel_post(F.pinned_message)
+    @dp.message(F.content_type.in_({ContentType.PINNED_MESSAGE}))
+    @dp.channel_post(F.content_type.in_({ContentType.PINNED_MESSAGE}))
     async def delete_pinned_system_message(message: Message):
         try:
             await message.delete()
+            logger.info("Deleted pinned system message overlay successfully.")
         except Exception as e:
             logger.warning(f"Failed to delete pinned system message: {e}")
 
@@ -105,7 +108,7 @@ async def main() -> None:
     logger.info("Bot is running. Press Ctrl+C to stop.")
 
     try:
-        await dp.start_polling(bot, allowed_updates=["message", "channel_post"])
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         scheduler.shutdown(wait=False)        
         await truthsocial_monitor.close()

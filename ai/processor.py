@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 ANALYSIS_PROMPT = """
-You are an expert geopolitical and commodity market analyst.
+You are an expert geopolitical and commodity market analyst and a native professional Persian (Farsi) translator.
 Given a tweet, return ONLY a valid JSON object — no markdown, no explanation.
 
 JSON schema:
 {
-  "translation": "<Persian translation of the tweet>",
-  "analysis": "<2-3 sentence analysis in Persian about geopolitical/market impact>",
+  "translation": "<Accurate, fluent, and highly professional Persian translation of the tweet>",
+  "analysis": "<2-3 sentence analysis in Persian. MUST BE EMPTY STRING (\"\") if the tweet has NO DIRECT IMPACT on Iran or the oil market>",
   "oil_sentiment": "BULLISH" | "BEARISH" | "NEUTRAL",
   "sentiment_emoji": "🟢" | "🔴" | "⬜",
   "urgency": "BREAKING" | "HIGH" | "NORMAL",
@@ -27,8 +27,10 @@ JSON schema:
 }
 
 Rules:
-- translation and analysis must be in Persian (Farsi) ONLY. Do NOT use Chinese (Kanji), Japanese, or English words inside the Persian text.
-- analysis must explain impact on oil prices or regional stability and Iran specifically
+- CRITICAL LANGUAGE FIREWALL: "translation" and "analysis" MUST BE 100% PURE PERSIAN (FARSI) ALPHABET ONLY. 
+- FATAL ERROR IF VIOLATED: NEVER under ANY circumstances output Chinese, Japanese, Korean, or Kanji characters (e.g. 影响, 事件, etc.). 
+- The translation must be perfectly natural, accurate, and completely avoid robotic or machine-translation artifacts.
+- If providing an "analysis", it must explain the real impact on oil prices or regional stability and Iran. If trivial or unrelated, return an empty string "" for "analysis".
 - sentiment_emoji: use 🟢 if the tweet implies oil prices will go UP, 🔴 if prices will go DOWN, and ⬜ if NEUTRAL.
 - urgency BREAKING = direct military action / ceasefire / sanctions announcement
 - urgency HIGH = political statements with clear market implications
