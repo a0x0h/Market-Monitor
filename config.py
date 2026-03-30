@@ -8,6 +8,7 @@ class Config:
     # ── Telegram ─────────────────────────────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHANNEL_ID: str = os.getenv("TELEGRAM_CHANNEL_ID", "")
+    TELEGRAM_CHANNEL: str = os.getenv("TELEGRAM_CHANNEL", "")  # e.g. @mychannel, optional if ID is provided (without @)
 
     # ── AI Keys ───────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")

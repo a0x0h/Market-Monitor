@@ -56,7 +56,7 @@ class TelegramSender:
         result = await self._retry(_do)
         if pin and result:
             try:
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id)
+                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id, disable_notification=True)
             except Exception as e:
                 logger.warning(f"Failed to pin text message: {e}")
 
@@ -81,7 +81,7 @@ class TelegramSender:
 
         if pin and result:
             try:
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id)
+                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id, disable_notification=True)
             except Exception as e:
                 logger.warning(f"Failed to pin photo message: {e}")
 
@@ -112,10 +112,10 @@ class TelegramSender:
         
         if pin and result:
             try:
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id)
+                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id, disable_notification=True)
             except Exception as e:
                 logger.warning(f"Failed to pin video message: {e}")
-                
+
         if result is None:
             await self.send_text(trimmed, pin=pin)
 
@@ -146,7 +146,7 @@ class TelegramSender:
         if pin and result_messages:
             try:
                 # pin the first message in the group
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result_messages[0].message_id)
+                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result_messages[0].message_id, disable_notification=True)
             except Exception as e:
                 logger.warning(f"Failed to pin album message: {e}")
                 

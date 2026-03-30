@@ -110,6 +110,8 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
     lines.append("━━━━━━━━━━━━━━━━━")
 
     for symbol, info in prices.items():
+        channel_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
+
         meta = Config.PRICE_TICKERS.get(symbol, {})
         name = meta.get("name", symbol)
         emoji = meta.get("emoji", "")
@@ -122,7 +124,7 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
         # Avoid shadowing the function name
         e_change = emoji_change(pct)
 
-        lines.append(f"{e_change}  {name} | <b>{price_str}</b> ({arrow})")
+        lines.append(f"{e_change}  {name} | <b><a href='{channel_link}'>{price_str}</a></b> ({arrow})")
 
         # Check alert threshold against last sent price
         last = last_prices.get(symbol, {}).get("price")

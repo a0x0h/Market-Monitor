@@ -53,8 +53,8 @@ def save_last_prices(prices: dict) -> None:
 def fmt_price(value: float, unit: str = "$") -> str:
     if unit == "$":
         return f"${value:,.2f}"
-    if unit == "تومان":
-        return f"{value:,.0f} تومان"
+    if unit == "TMN":
+        return f"{value:,.0f} TMN"
     return f"{value:,.2f} {unit}"
 
 
@@ -75,7 +75,7 @@ def emoji_change(pct: float) -> str:
 
 def utc_now_str() -> str:
     now = datetime.now(timezone.utc)
-    return now.strftime("%H:%M UTC  |  %d %b %Y")
+    return now.strftime("%H:%M UTC %d/%b/%Y")
 
 
 def relative_time(dt: datetime) -> str:
@@ -85,12 +85,12 @@ def relative_time(dt: datetime) -> str:
     diff = now - dt
     seconds = int(diff.total_seconds())
     if seconds < 60:
-        return f"{seconds} ثانیه پیش"
+        return f"{seconds} seconds ago"
     elif seconds < 3600:
-        return f"{seconds // 60} دقیقه پیش"
+        return f"{seconds // 60} minutes ago"
     elif seconds < 86400:
-        return f"{seconds // 3600} ساعت پیش"
-    return f"{seconds // 86400} روز پیش"
+        return f"{seconds // 3600} hours ago"
+    return f"{seconds // 86400} days ago"
 
 
 def load_seen_news() -> set[str]:
