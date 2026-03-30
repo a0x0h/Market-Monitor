@@ -8,7 +8,7 @@ from config import Config
 from core.event_store import event_store, NewsEvent
 from utils.chart import generate_chart
 from utils.helpers import (
-    fmt_price, pct_arrow, utc_now_str,
+    fmt_price, pct_arrow, utc_now_str, emoji_change,
     load_last_prices, save_last_prices,
 )
 
@@ -118,9 +118,10 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
 
         price_str = fmt_price(price, unit)
         arrow = pct_arrow(pct)
-        emoji_change = emoji_change(pct)
+        # Avoid shadowing the function name
+        e_change = emoji_change(pct)
 
-        lines.append(f"{emoji_change}  {name} | <b>{price_str}</b> ({arrow})")
+        lines.append(f"{e_change}  {name} | <b>{price_str}</b> ({arrow})")
 
         # Check alert threshold against last sent price
         last = last_prices.get(symbol, {}).get("price")

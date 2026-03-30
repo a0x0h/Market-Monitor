@@ -206,7 +206,7 @@ class TruthSocialMonitor:
                 pub_dt = dt
                 tz = pytz.timezone("Asia/Tehran")
                 dt_tehran = dt.astimezone(tz)
-                date_str = dt_tehran.strftime("- %H:%M  |  %d %b %Y (IR)")
+                date_str = dt_tehran.strftime("[ %H:%M - %d %b %Y (IR) ]")
             except:
                 date_str = tehran_now_str()
         else:

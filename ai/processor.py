@@ -62,10 +62,32 @@ _DEFAULT_RESULT = {
 def _parse_json_response(raw: str) -> dict:
     raw = raw.strip()
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
+        # Remove the first ``` block marker entirely
+        raw = raw.split("```", 1)[-1]
+        
+        # Remove optional 'json' tag at start
         if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw.strip())
+            raw = raw[4:].strip()
+            
+        # If there's a closing ```, remove it
+        if "```" in raw:
+            raw = raw.split("```")[0].strip()
+
+    # Sometimes LLMs don't escape double quotes properly inside translation arrays,
+    # or they accidentally insert conversational text outside the JSON boundaries.
+    # We will try to find the strict indices for {...} bounds.
+    start_idx = raw.find("{")
+    end_idx = raw.rfind("}")
+    
+    if start_idx != -1 and end_idx != -1:
+        raw = raw[start_idx : end_idx + 1]
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as decode_error:
+        # If there's an emergency parsing failure, log the raw payload for debugging
+        logger.error(f"JSON Parsing failed on string: {repr(raw)}")
+        raise decode_error
 
 
 async def _analyze_with_gemini(tweet_text: str) -> Optional[dict]:
