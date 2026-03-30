@@ -7,6 +7,7 @@ import aiofiles
 from datetime import datetime, timezone, timedelta
 import pytz
 import re
+from bs4 import BeautifulSoup
 
 from ai.processor import analyze_tweet
 from config import Config
@@ -114,7 +115,9 @@ class TruthSocialMonitor:
                         continue
 
                     raw_content = tweet.get("content", "")
-                    clean_text_pre = re.sub(r"<[^>]+>", " ", raw_content)
+                    
+                    soup = BeautifulSoup(raw_content, "html.parser")
+                    clean_text_pre = soup.get_text(separator=" ").strip()
 
                     # only send if it's for him (include president, DJT, ...)
                     # we can filter out RTs unless they are from him
@@ -147,10 +150,15 @@ class TruthSocialMonitor:
         tweet_id = tweet["id"]
         # extract content text removing html tags
         raw_content = tweet.get("content", "")
-        # Very simple tag removal for basic text
-        clean_text = re.sub(r"<[^>]+>", "\n", raw_content)
-        # remove multiple newlines
-        clean_text = re.sub(r"\n+", "\n", clean_text).strip()
+        soup = BeautifulSoup(raw_content, "html.parser")
+        for br in soup.find_all("br"):
+            br.replace_with("\n")
+        for p in soup.find_all("p"):
+            p.insert_after("\n\n")
+
+        clean_text = soup.get_text()
+        # remove multiple newlines safely
+        clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
 
         # Check for media attachments (especially video)
         video_url = None
@@ -205,13 +213,13 @@ class TruthSocialMonitor:
                 pub_dt = dt
                 tz = pytz.timezone("Asia/Tehran")
                 dt_tehran = dt.astimezone(tz)
-                date_str = dt_tehran.strftime("[ %H:%M - %d %b %Y (IR) ]")
+                date_str = dt_tehran.strftime("- %H:%M %d/%m/%Y (IR)")
             except:
-                date_str = f"[ {tehran_now_str()} ]"
+                date_str = f"- {tehran_now_str()}"
         else:
-            date_str = f"[ {tehran_now_str()} ]"
+            date_str = f"- {tehran_now_str()}"
 
-        date_link = f"<a href='{ts_url}'>{date_str}</a>"
+        channel_tag = "📡 @MonitorIR"
 
         # Check if the text contains president-related keywords to decide pinning and analysis
         president_keywords = ["president", "djt", "donald", "trump"]
@@ -226,13 +234,14 @@ class TruthSocialMonitor:
         analysis_block = f"🛢️{sentiment_emoji} {escape_html(analysis_text)}\n\n" if should_pin and analysis_text else ""
 
         msg = (
-            f"{urgency_emoji} <b>#New_Truth by Donald J. Trump</b>\n\n"
+            f"{urgency_emoji} <b>#New_Truth by <a href='{ts_url}'>Donald J. Trump</a></b>\n\n"
             f"<i>{escape_html(clean_text)}</i>\n\n"
             f"━━━━━\n"
             f"🇮🇷 {escape_html(translation)}\n\n"
             f"━━━━━\n"
-            f"{analysis_block}\n"
-            f"{date_link}\n"
+            f"{analysis_block}"
+            f"{date_str}\n"
+            f"{channel_tag}"
         )
 
         event_store.append(
@@ -252,9 +261,10 @@ class TruthSocialMonitor:
             # Check for Telegram caption length limit
             if len(msg) > 1024:
                 msg = (
-                    f"{urgency_emoji} <b>#New_Truth by Donald J. Trump</b>\n\n"
+                    f"{urgency_emoji} <b><a href='{ts_url}'>#New_Truth by Donald J. Trump</a></b>\n\n"
+                    f"🇮🇷 {escape_html(translation)}\n"
+                    f"━━━━━\n"
                     f"{analysis_block}"
-                    f"🇮🇷 {escape_html(translation)}\n\n"
                     f"{date_link}"
                 )
             

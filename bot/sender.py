@@ -95,7 +95,7 @@ class TelegramSender:
         trimmed = _trim(caption, CAPTION_LIMIT)
         
         if isinstance(video_path_or_bytes, str):
-            file = FSInputFile(video_path_or_bytes)
+            file = FSInputFile(video_path_or_bytes, filename="video.mp4")
         else:
             file = BufferedInputFile(video_path_or_bytes, filename="video.mp4")
 
@@ -126,13 +126,13 @@ class TelegramSender:
         
         photo_file = BufferedInputFile(photo_bytes, filename="tweet.jpg")
         if isinstance(video_path_or_bytes, str):
-            video_file = FSInputFile(video_path_or_bytes)
+            video_file = FSInputFile(video_path_or_bytes, filename="video.mp4")
         else:
             video_file = BufferedInputFile(video_path_or_bytes, filename="video.mp4")
 
         media = [
             InputMediaPhoto(media=photo_file, caption=trimmed_caption, parse_mode="HTML"),
-            InputMediaVideo(media=video_file)
+            InputMediaVideo(media=video_file, supports_streaming=True)
         ]
 
         async def _do():

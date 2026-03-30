@@ -28,8 +28,8 @@ JSON schema:
 
 Rules:
 - translation and analysis must be in Persian (Farsi)
-- analysis must explain impact on oil prices or regional stability
-- urgency BREAKING = direct military action / ceasefire / sanctions announcement
+- analysis must explain impact on oil prices or regional stability and Iran specifically
+- sentiment_emoji: use 🟢 if the tweet implies oil prices will go UP, 🔴 if prices will go DOWN, and ⬜ if NEUTRAL.- urgency BREAKING = direct military action / ceasefire / sanctions announcement
 - urgency HIGH = political statements with clear market implications
 - urgency NORMAL = routine updates / analysis
 """
