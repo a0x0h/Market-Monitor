@@ -32,11 +32,11 @@ async def on_startup(sender: TelegramSender) -> None:
         "🟢  <b>Market Monitor Bot</b> Activated\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "📡 Monitoring:\n"
-        f"• {len(Config.MONITORED_ACCOUNTS)} X Accounts  (Tier1 every {Config.TWITTER_FAST_INTERVAL_SECONDS}s)\n"
+        # f"• {len(Config.MONITORED_ACCOUNTS)} X Accounts  (Tier1 every {Config.TWITTER_FAST_INTERVAL_SECONDS}s)\n"
         f"• {len(Config.TRUTHSOCIAL_ACCOUNTS)} Truth Social Accounts  (every {Config.TRUTHSOCIAL_FAST_INTERVAL_SECONDS}s)\n"
-        f"• {len(Config.RSS_FEEDS)} News Feeds  (every {Config.NEWS_POLL_INTERVAL_MINUTES} minutes)\n"
+        # f"• {len(Config.RSS_FEEDS)} News Feeds  (every {Config.NEWS_POLL_INTERVAL_MINUTES} minutes)\n"
         f"• {len(Config.PRICE_TICKERS)} Price Tickers  (every {Config.PRICE_INTERVAL_MINUTES} minutes)\n\n"
-        "🌅 Morning Analysis: 7:00 AM  |  🌙 Evening Analysis: 9:00 PM (Tehran)\n"
+        # "🌅 Morning Analysis: 7:00 AM  |  🌙 Evening Analysis: 9:00 PM (Tehran)\n"
         "━━━━━━━━━━━━━━━━━━━━━━"
     )
 

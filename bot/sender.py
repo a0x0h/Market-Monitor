@@ -60,9 +60,14 @@ class TelegramSender:
             except Exception as e:
                 logger.warning(f"Failed to pin text message: {e}")
 
-    async def send_photo(self, image_bytes: bytes, caption: str, pin: bool = False) -> None:
+    async def send_photo(self, image_path_or_bytes, caption: str, pin: bool = False) -> None:
+        from aiogram.types import BufferedInputFile, FSInputFile
         trimmed_caption = _trim(caption, CAPTION_LIMIT)
-        file = BufferedInputFile(image_bytes, filename="tweet.jpg")
+        
+        if isinstance(image_path_or_bytes, str):
+            file = FSInputFile(image_path_or_bytes)
+        else:
+            file = BufferedInputFile(image_path_or_bytes, filename="tweet.jpg")
 
         async def _do():
             return await self.bot.send_photo(
@@ -84,11 +89,15 @@ class TelegramSender:
         if result is None:
             await self.send_text(trimmed_caption, pin=pin)
 
-    async def send_video(self, video_bytes: bytes, caption: str, pin: bool = False) -> None:
+    async def send_video(self, video_path_or_bytes, caption: str, pin: bool = False) -> None:
         """Send a video file. Falls back to send_text on failure."""
-        from aiogram.types import BufferedInputFile as BIF
+        from aiogram.types import BufferedInputFile, FSInputFile
         trimmed = _trim(caption, CAPTION_LIMIT)
-        file    = BIF(video_bytes, filename="video.mp4")
+        
+        if isinstance(video_path_or_bytes, str):
+            file = FSInputFile(video_path_or_bytes)
+        else:
+            file = BufferedInputFile(video_path_or_bytes, filename="video.mp4")
 
         async def _do():
             return await self.bot.send_video(

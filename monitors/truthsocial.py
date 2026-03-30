@@ -1,7 +1,10 @@
 import asyncio
 import logging
 import json
-from datetime import datetime, timezone
+import os
+import aiohttp
+import aiofiles
+from datetime import datetime, timezone, timedelta
 import pytz
 import re
 
@@ -36,15 +39,17 @@ if _BOTASAURUS_AVAILABLE:
         headless=True,
         add_arguments=["--no-sandbox", "--disable-dev-shm-usage"],
         output=None,
+        reuse_driver=True, # Keep browser open to save resources
     )
-    def fetch_truthsocial_api_sync(driver: BotoDriver, data: dict) -> list | None:
+    def fetch_truthsocial_api_sync(driver: BotoDriver, data: dict) -> dict | None:
         api_url = data.get("url")
         logger.info("Botasaurus fetching Truth Social API...")
         driver.get(api_url, bypass_cloudflare=True)
         driver.sleep(2)
         try:
             text = driver.run_js("return document.body.innerText;")
-            return json.loads(text)
+            cookies = driver.get_cookies_dict()
+            return {"data": json.loads(text), "cookies": cookies}
         except Exception as e:
             logger.error(f"Failed to parse Botasaurus JSON: {e}")
             return None
@@ -65,17 +70,39 @@ class TruthSocialMonitor:
 
         try:
             logger.info("Checking Truth Social API for new posts using Botasaurus...")
-            
-            # Run the synchronous Botasaurus fetcher in a background thread
-            tweets = await asyncio.to_thread(fetch_truthsocial_api_sync, {"url": TRUTHSOCIAL_API_URL})
 
-            if not tweets or not isinstance(tweets, list):
+            # Run the synchronous Botasaurus fetcher in a background thread
+            result = await asyncio.to_thread(fetch_truthsocial_api_sync, {"url": TRUTHSOCIAL_API_URL})
+
+            if not result or not isinstance(result, dict):
                 logger.error("Failed to fetch truth social API via Botasaurus or invalid format.")
                 return
 
+            tweets = result.get("data", [])
+            botasaurus_cookies = result.get("cookies", {})
+
+            if not isinstance(tweets, list):
+                logger.error("Failed to fetch truth social API via Botasaurus or invalid format for tweets.")
+                return
+
             new_tweets = []
+            now_utc = datetime.now(timezone.utc)
+
             for tweet in tweets:
                 if isinstance(tweet, dict) and tweet.get("id"):
+                    
+                    # Check age (within 48 hours)
+                    created_at_str = tweet.get("created_at")
+                    if created_at_str:
+                        try:
+                            # Parse "2026-03-30T02:29:30.926Z" and remove milliseconds for safety or just parse
+                            dt_str = created_at_str.replace("Z", "+00:00")
+                            pub_dt = datetime.fromisoformat(dt_str)
+                            if (now_utc - pub_dt) > timedelta(hours=48):
+                                continue # Skip older posts
+                        except Exception as e:
+                            logger.error(f"Error parsing date {created_at_str}: {e}")
+                            
                     account = tweet.get("account", {})
                     # Ensure it's original tweet by him
                     is_trump_account = (
@@ -111,12 +138,12 @@ class TruthSocialMonitor:
             save_seen_tweets(self.seen_tweets)
 
             for tweet in reversed(new_tweets):
-                await self._process_tweet(tweet)
+                await self._process_tweet(tweet, cookies=botasaurus_cookies)
 
         except Exception as e:
             logger.error(f"Error checking Truth Social API: {e}")
 
-    async def _process_tweet(self, tweet: dict):
+    async def _process_tweet(self, tweet: dict, cookies: dict = None):
         tweet_id = tweet["id"]
         # extract content text removing html tags
         raw_content = tweet.get("content", "")
@@ -125,13 +152,49 @@ class TruthSocialMonitor:
         # remove multiple newlines
         clean_text = re.sub(r"\n+", "\n", clean_text).strip()
 
+        # Check for media attachments (especially video)
+        video_url = None
+        media_attachments = tweet.get("media_attachments", [])
+        for media in media_attachments:
+            if media.get("type") == "video":
+                video_url = media.get("url")
+                break
+
+        # Handle empty text with video attachment
+        if not clean_text:
+            if video_url:
+                clean_text = "📹 [Video Attachment]"
+            elif media_attachments:
+                clean_text = "📸 [Image Attachment]"
+
         # Analyze and translate
         analysis = await analyze_tweet(clean_text)
 
-        # Take screenshot
-        logger.info(f"Taking screenshot for tweet {tweet_id}")
-        ts_url = f"https://truthsocial.com/@realDonaldTrump/posts/{tweet_id}"
-        screenshot_bytes = await screenshot_module.screenshot_truthsocial(ts_url)
+        video_path = None
+        screenshot_bytes = None
+
+        if video_url:
+            logger.info(f"Downloading video for tweet {tweet_id} from {video_url}")
+            try:
+                os.makedirs("media_downloads", exist_ok=True)
+                download_path = f"media_downloads/ts_video_{tweet_id}.mp4"
+                
+                async with aiohttp.ClientSession(cookies=cookies) as session:
+                    async with session.get(video_url) as resp:
+                        if resp.status == 200:
+                            async with aiofiles.open(download_path, 'wb') as f:
+                                await f.write(await resp.read())
+                            video_path = download_path
+                        else:
+                            logger.error(f"Failed to download video, HTTP {resp.status}")
+            except Exception as e:
+                logger.error(f"Failed to download video: {e}")
+                
+        if not video_path:
+            # Take screenshot only if no video was downloaded
+            logger.info(f"Taking screenshot for tweet {tweet_id}")
+            ts_url = f"https://truthsocial.com/@realDonaldTrump/posts/{tweet_id}"
+            screenshot_bytes = await screenshot_module.screenshot_truthsocial(ts_url)
 
         # formatting date
         created_at_str = tweet.get("created_at")
@@ -143,7 +206,7 @@ class TruthSocialMonitor:
                 pub_dt = dt
                 tz = pytz.timezone("Asia/Tehran")
                 dt_tehran = dt.astimezone(tz)
-                date_str = dt_tehran.strftime("%H:%M  |  %d %b %Y (IRST)")
+                date_str = dt_tehran.strftime("- %H:%M  |  %d %b %Y (IR)")
             except:
                 date_str = tehran_now_str()
         else:
@@ -174,18 +237,27 @@ class TruthSocialMonitor:
         )
 
         try:
-            if screenshot_bytes:
-                # Check for Telegram caption length limit
-                if len(msg) > 1024:
-                    # Truncate clean text and re-assemble safely
-                    msg = (
-                        f"{urgency_emoji} <b>New Truth by Donald J. Trump</b>\n\n"
-                        f"\n<i>{escape_html(clean_text[:300])}...</i>\n\n"
-                        f"━━━━━\n"
-                        f"🇮🇷\n{escape_html(translation[:300])}...\n\n"
-                        f"{date_str}"
-                    )
+            # Check for Telegram caption length limit
+            if len(msg) > 1024:
+                msg = (
+                    f"{urgency_emoji} <b>#New_Truth by Donald J. Trump</b>\n\n"
+                    f"🇮🇷 {escape_html(translation)}\n\n"
+                    f"{date_str}"
+                )
+            if video_path:
+                await self.sender.send_video(
+                    video_path,
+                    msg,
+                    pin=True
+                )
+                # Cleanup downloaded video
+                try:
+                    os.remove(video_path)
+                    logger.info(f"Cleaned up downloaded video {video_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up video file: {e}")
 
+            elif screenshot_bytes:
                 await self.sender.send_photo(
                     screenshot_bytes,
                     msg,

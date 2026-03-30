@@ -162,8 +162,9 @@ if _BOTASAURUS_AVAILABLE:
     @boto_browser(
         headless=True,
         add_arguments=["--no-sandbox", "--disable-dev-shm-usage"],
-        window_size=(800, 1000),
+        window_size=(770, 1000),
         output=None,
+        reuse_driver=True, # Keep browser open to save resources
     )
     def _boto_screenshot_truthsocial_sync(
         driver: BotoDriver, data: dict
