@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import aiohttp
-from datetime import datetime
+from datetime import datetime, timezone
 import pytz
 import re
 
@@ -110,10 +110,12 @@ class TruthSocialMonitor:
 
         # formatting date
         created_at_str = tweet.get("created_at")
+        pub_dt = datetime.now(timezone.utc)
         if created_at_str:
             try:
                 # "2026-03-30T02:29:30.926Z" -> datetime
                 dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                pub_dt = dt
                 tz = pytz.timezone("Asia/Tehran")
                 dt_tehran = dt.astimezone(tz)
                 date_str = dt_tehran.strftime("%H:%M  |  %d %b %Y (IRST)")
@@ -133,13 +135,16 @@ class TruthSocialMonitor:
             f"{date_str}\n"
         )
 
-        event_store.add_event(
+        event_store.append(
             NewsEvent(
-                timestamp=datetime.now(),
                 source="TruthSocial",
-                title=clean_text[:50] + "...",
-                text=f"Trump truth: {clean_text}",
-                url=f"https://truthsocial.com/@realDonaldTrump/posts/{tweet_id}",
+                source_tag="#TruthSocial",
+                headline=clean_text[:300],
+                oil_sentiment=analysis.get("oil_sentiment", "NEUTRAL"),
+                urgency=analysis.get("urgency", "NORMAL"),
+                keywords=analysis.get("keywords", []),
+                username="realDonaldTrump",
+                published_at=pub_dt
             )
         )
 

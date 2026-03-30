@@ -20,7 +20,7 @@ class Config:
     PRICE_INTERVAL_MINUTES: int = 1
     TWITTER_POLL_INTERVAL_MINUTES: int = 5
     TWITTER_FAST_INTERVAL_SECONDS: int = 20      # tier-1 fast poll
-    TRUTHSOCIAL_FAST_INTERVAL_SECONDS: int = 30
+    TRUTHSOCIAL_FAST_INTERVAL_SECONDS: int = 60
     NEWS_POLL_INTERVAL_MINUTES: int = 10
     TEHRAN_TIMEZONE: str = "Asia/Tehran"
 
@@ -58,13 +58,7 @@ class Config:
     ]
 
     # ── RSS news feeds ────────────────────────────────────────────────────────
-    RSS_FEEDS: list[dict] = [
-        {"url": "https://feeds.reuters.com/Reuters/worldNews",   "name": "Reuters",    "tag": "#Reuters"},
-        {"url": "https://feeds.bbci.co.uk/news/world/rss.xml",   "name": "BBC World",  "tag": "#BBC"},
-        {"url": "https://www.aljazeera.com/xml/rss/all.xml",     "name": "Al Jazeera", "tag": "#AlJazeera"},
-        {"url": "https://oilprice.com/rss/main",                  "name": "OilPrice",   "tag": "#OilPrice"},
-        {"url": "https://www.middleeasteye.net/rss",              "name": "MEE",        "tag": "#MEE"},
-    ]
+    RSS_FEEDS: list[dict] = []
 
     # ── Credibility legend ───────────────────────────────────────────────────
     CREDIBILITY_LABELS: dict[str, str] = {

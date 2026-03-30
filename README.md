@@ -1,65 +1,72 @@
-# 🛢 Market Monitor Bot
+# 🛒 Market Monitor Bot
 
-یک ربات تلگرام برای پایش لحظه‌ای توییت‌های شخصیت‌های مهم و قیمت بازارهای جهانی.
+A Telegram bot for real-time monitoring of important figures' tweets, Truth Social posts, and global market prices -> Sends to your Telegram channel
 
 ---
 
-## ساختار پروژه
+## Project Structure
 
 ```
 market_monitor/
-├── main.py                  # نقطه ورود اصلی
-├── config.py                # تمام تنظیمات
-├── requirements.txt
-├── .env                     # کلیدها (ایجاد کنید)
+├── main.py                  # Main entry point
+├── config.py                # All configurations
+├── requirements.txt         # Required Python packages
+├── .env                     # API Keys (create this from .env.example)
 ├── monitors/
-│   ├── twitter.py           # پایش Nitter RSS
-│   └── prices.py            # قیمت بازارها (yfinance)
+│   ├── twitter.py           # Nitter RSS polling
+│   ├── truthsocial.py       # Truth Social API polling with Botasaurus
+│   └── prices.py            # Market prices tracking (via yfinance)       
 ├── ai/
-│   └── processor.py         # Gemini Flash + Groq fallback
+│   └── processor.py         # AI analysis utilizing Gemini Flash + Groq fallback
 ├── bot/
-│   └── sender.py            # ارسال پیام به تلگرام
+│   └── sender.py            # Telegram message sender utility    
 ├── utils/
-│   └── helpers.py           # توابع کمکی
+│   ├── screenshot.py        # Playwright & Botasaurus screenshot generation tool
+│   └── helpers.py           # Shared helper functions
 └── data/
-    ├── seen_tweets.json      # توییت‌های دیده‌شده (خودکار)
-    └── last_prices.json      # قیمت‌های آخر (خودکار)
+    ├── seen_tweets.json      # Auto-generated cache for seen tweets
+    └── last_prices.json      # Auto-generated cache for last fetched prices
 ```
 
 ---
 
-## راه‌اندازی
+## Setup & Installation
 
-### ۱. نصب پیش‌نیازها
+### 1. Install Dependencies
+
+You need to install the core python requirements and Playwright's Chromium browser:
 
 ```bash
 pip install -r requirements.txt
+playwright install chromium
 ```
 
-### ۲. ساخت فایل .env
+### 2. Configure Environment Variables
+
+Create and fill your `.env` API keys file:
 
 ```bash
 cp .env.example .env
 ```
 
-فایل `.env` را با مقادیر واقعی پر کنید:
+Set the `.env` values accurately:
 
 ```env
-TELEGRAM_BOT_TOKEN=توکن_ربات_تلگرام
-TELEGRAM_CHANNEL_ID=@کانال_یا_آیدی_عددی
-GEMINI_API_KEY=کلید_جمینی
-GROQ_API_KEY=کلید_گروک
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHANNEL_ID=@your_channel_or_numeric_id
+GEMINI_API_KEY=your_gemini_key
+GROQ_API_KEY=your_groq_key
 ```
 
-### ۳. دریافت کلیدها
+### 3. Required Keys
 
-| سرویس | لینک | هزینه |
+| Service | Retrieval Source | Expected Cost |
 |---|---|---|
-| Telegram Bot | @BotFather | رایگان |
-| Gemini API | https://aistudio.google.com/app/apikey | رایگان (15 req/min) |
-| Groq API | https://console.groq.com | رایگان (14400 req/day) |
+| Telegram Bot Token | @BotFather (on Telegram) | Free |
+| Gemini API Key | https://aistudio.google.com/app/apikey | Free (15 req/min) |
+| Groq API Key | https://console.groq.com | Free (14400 req/day) |
 
-### ۴. اجرا
+### 4. Run the Bot
 
 ```bash
 python main.py
@@ -67,77 +74,84 @@ python main.py
 
 ---
 
-## نمونه فرمت توییت در تلگرام
+## Output Examples
 
-```
+### Social Post Format
+
+```text
 ━━━━━━━━━━━━━━━━━━━━━━
-🚨  Donald Trump  |  @realDonaldTrump
-🏛 Politics   ✅
+🚨  #New_Truth by Donald J. Trump
 ━━━━━━━━━━━━━━━━━━━━━━
 
-🕐  ۱۵ دقیقه پیش  |  14:32 UTC
-
-💬  متن اصلی:
+💬 Original Text:
 Saudi Arabia must increase oil production immediately...
 
-🇮🇷  ترجمه:
-عربستان باید فوراً تولید نفت را افزایش دهد...
+━━━━━
+🇮🇷 Translation:
+عربستان باید فوراً تولید نفت را افزایش دهد...   
 
-🧠  تحلیل:
-این توییت فشار مستقیم بر OPEC برای افزایش عرضه است.
-در صورت اجرا فشار نزولی روی WTI و Brent ایجاد می‌شود.
+🧠 Analysis:
+This tweet exerts direct pressure on OPEC to increase supply.
+If enacted, it creates a downward effect resulting in bearish movements for WTI and Brent.
 
-🔴  نفت  |  🔗 مشاهده توییت
+🔴 Bearish Oil  |  🔗 View Tweet
 ━━━━━━━━━━━━━━━━━━━━━━
 ```
 
----
+### Market Prices Format
 
-## نمونه فرمت قیمت‌ها
-
-```
+```text
 ━━━━━━━━━━━━━━━━━━━━━━
-📊  آپدیت بازار  |  14:00 UTC  |  28 Mar 2026
+📊  Market Update  |  14:00 UTC  |  28 Mar 2026
 ━━━━━━━━━━━━━━━━━━━━━━
 
 🛢  WTI Crude     $82.40   🔴 -1.20%
 🛢  Brent Crude   $85.10   🔴 -0.90%
 🥇  Gold          $2,341   🟢 +0.40%
 💵  DXY           104.20   🟢 +0.30%
-⚡  Nat Gas         $2.18  ⬜ -0.10%
+⚡  Nat Gas         $2.18   ⬜ -0.10%
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ---
 
-## اعتبارسنجی منابع
+## Verifications & Indicators
 
-| نشانه | معنا |
+| Icon | Meaning |
 |---|---|
-| ✅ | منبع معتبر |
-| 🟡 | منبع نیمه‌معتبر |
-| 🔴 State Media | رسانه دولتی |
-| ⚠️ | منبع تأییدنشده |
+| ✅ | Verified Source |
+| 🟡 | Semi-Verified Source / Mixed |
+| 🔴 State Media | Direct State-Controlled Media |
+| ⚠️ | Unverified / Anonymous Source |
 
 ---
 
-## تنظیمات قابل تغییر (config.py)
+## Core Configurations (`config.py`)
 
-| تنظیم | پیشفرض | توضیح |
+All polling values can be managed directly in `config.py`:
+
+| Setting | Default | Description |
 |---|---|---|
-| `PRICE_INTERVAL_MINUTES` | 5 | فاصله آپدیت قیمت |
-| `TWITTER_POLL_INTERVAL_MINUTES` | 5 | فاصله بررسی توییت |
-| `PRICE_ALERT_PCT` | 1.5 | درصد تغییر برای هشدار |
-| `NITTER_INSTANCES` | 5 آدرس | لیست سرورهای Nitter |
+| `PRICE_INTERVAL_MINUTES` | 5 | Time interval between routine market price updates |
+| `TWITTER_POLL_INTERVAL_MINUTES` | 5 | General time interval between Nitter checks |
+| `TWITTER_FAST_INTERVAL_SECONDS` | 20 | High-speed Twitter account polling interval |
+| `TRUTHSOCIAL_FAST_INTERVAL_SECONDS` | 30 | Truth Social specific polling loop frequency |
+| `PRICE_ALERT_PCT` | 1.5 | Minimum percentage shift required to trigger an instant price alert |
+| `NITTER_INSTANCES` | 5 URLs | Fallback array of active Nitter proxy endpoints |
 
 ---
 
-## اجرا به عنوان سرویس (systemd)
+## Operating as a Background Service (systemd)
+
+To keep the bot running infinitely on a Linux server:
+
+1. Create a service file: `/etc/systemd/system/market-monitor.service`
+2. Insert:
 
 ```ini
 [Unit]
-Description=Market Monitor Bot
+Description=Market Monitor Bot Service
 After=network.target
 
 [Service]
@@ -149,6 +163,8 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 ```
+
+3. Enable and start:
 
 ```bash
 sudo systemctl enable market-monitor

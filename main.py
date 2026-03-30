@@ -12,7 +12,6 @@ from core.event_store import event_store
 from monitors.twitter import TwitterMonitor
 from monitors.truthsocial import TruthSocialMonitor
 from monitors.prices import PriceMonitor
-from monitors.news import NewsMonitor
 from ai.market_analysis import send_morning_analysis, send_evening_analysis
 from bot.sender import TelegramSender
 import utils.screenshot as screenshot_module
