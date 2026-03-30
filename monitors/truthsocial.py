@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import aiohttp
+import json
 from datetime import datetime, timezone
 import pytz
 import re
@@ -17,6 +17,12 @@ from utils.helpers import (
 import utils.screenshot as screenshot_module
 from bot.sender import TelegramSender
 
+try:
+    from botasaurus.browser import browser as boto_browser, Driver as BotoDriver
+    _BOTASAURUS_AVAILABLE = True
+except ImportError:
+    _BOTASAURUS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 TRUMP_ACCOUNT_ID = "107780257626128497"
@@ -25,28 +31,47 @@ TRUTHSOCIAL_API_URL = (
     f"https://truthsocial.com/api/v1/accounts/{TRUMP_ACCOUNT_ID}/statuses"
 )
 
+if _BOTASAURUS_AVAILABLE:
+    @boto_browser(
+        headless=True,
+        add_arguments=["--no-sandbox", "--disable-dev-shm-usage"],
+        output=None,
+    )
+    def fetch_truthsocial_api_sync(driver: BotoDriver, data: dict) -> list | None:
+        api_url = data.get("url")
+        logger.info("Botasaurus fetching Truth Social API...")
+        driver.get(api_url, bypass_cloudflare=True)
+        driver.sleep(2)
+        try:
+            text = driver.run_js("return document.body.innerText;")
+            return json.loads(text)
+        except Exception as e:
+            logger.error(f"Failed to parse Botasaurus JSON: {e}")
+            return None
+
 
 class TruthSocialMonitor:
     def __init__(self, sender: TelegramSender):
         self.sender = sender
         self.seen_tweets = load_seen_tweets()
-        self.session = None
 
     async def close(self):
-        if self.session:
-            await self.session.close()
+        pass
 
     async def check_new_posts(self):
-        if not self.session:
-            self.session = aiohttp.ClientSession()
+        if not _BOTASAURUS_AVAILABLE:
+            logger.error("Botasaurus not available. Cannot fetch Truth Social.")
+            return
 
         try:
-            logger.info("Checking Truth Social API for new posts...")
-            async with self.session.get(TRUTHSOCIAL_API_URL, timeout=15) as resp:
-                if resp.status != 200:
-                    logger.error(f"Failed to fetch truth social API: {resp.status}")
-                    return
-                tweets = await resp.json()
+            logger.info("Checking Truth Social API for new posts using Botasaurus...")
+            
+            # Run the synchronous Botasaurus fetcher in a background thread
+            tweets = await asyncio.to_thread(fetch_truthsocial_api_sync, {"url": TRUTHSOCIAL_API_URL})
+
+            if not tweets or not isinstance(tweets, list):
+                logger.error("Failed to fetch truth social API via Botasaurus or invalid format.")
+                return
 
             new_tweets = []
             for tweet in tweets:

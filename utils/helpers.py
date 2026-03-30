@@ -53,15 +53,24 @@ def save_last_prices(prices: dict) -> None:
 def fmt_price(value: float, unit: str = "$") -> str:
     if unit == "$":
         return f"${value:,.2f}"
-    return f"{value:,.2f}"
+    if unit == "تومان":
+        return f"{value:,.0f} تومان"
+    return f"{value:,.2f} {unit}"
 
 
 def pct_arrow(pct: float) -> str:
     if pct > 0:
-        return f"🟢 +{pct:.2f}%"
+        return f"+{pct:.2f}%"
     elif pct < 0:
-        return f"🔴 {pct:.2f}%"
-    return f"⬜ {pct:.2f}%"
+        return f"{pct:.2f}%"
+    return f"{pct:.2f}%"
+
+def emoji_change(pct: float) -> str:
+    if pct > 0:
+        return "🟢"
+    elif pct < 0:
+        return "🔴"
+    return "⚪"
 
 
 def utc_now_str() -> str:

@@ -40,17 +40,41 @@ async def _fetch_ticker(
         return None, None
 
 
+async def _fetch_okex_usdt_irt(session: aiohttp.ClientSession) -> tuple[float | None, float | None]:
+    url = "https://azapi.ok-ex.io/api/v1/asset/otc/tickers"
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                logger.warning(f"Failed to fetch OK-Ex USDT: HTTP {resp.status}")
+                return None, None
+            data = await resp.json(content_type=None)
+            for item in data:
+                if item.get("asset") == "USDT":
+                    buy_amt = float(item.get("buyAmt", 0))
+                    return buy_amt, buy_amt  # returning buy_amt for both so pct_change defaults to 0 if we don't have prev
+            return None, None
+    except Exception as e:
+        logger.warning(f"Failed to fetch OK-Ex USDT: {e}")
+        return None, None
+
+
 async def fetch_all_prices() -> dict[str, dict]:
     """Fetch all configured tickers concurrently."""
     async with aiohttp.ClientSession(headers=_YF_HEADERS) as session:
         tasks = {
             symbol: _fetch_ticker(session, symbol)
             for symbol in Config.PRICE_TICKERS
+            if symbol != "USDT-IRT"
         }
-        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        usdt_task = _fetch_okex_usdt_irt(session)
+        
+        results = await asyncio.gather(*tasks.values(), usdt_task, return_exceptions=True)
+
+    usdt_result = results[-1]
+    yf_results = results[:-1]
 
     prices = {}
-    for symbol, result in zip(tasks.keys(), results):
+    for symbol, result in zip(tasks.keys(), yf_results):
         if isinstance(result, Exception) or result is None:
             continue
         price, prev = result
@@ -64,6 +88,15 @@ async def fetch_all_prices() -> dict[str, dict]:
             "pct_change": pct,
         }
 
+    if not isinstance(usdt_result, Exception) and usdt_result is not None:
+        usdt_price, usdt_prev = usdt_result
+        if usdt_price is not None:
+            prices["USDT-IRT"] = {
+                "price": usdt_price,
+                "prev_close": usdt_prev,
+                "pct_change": 0.0
+            }
+
     return prices
 
 
@@ -72,10 +105,8 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
     lines = []
     alerts = []
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append(f"📊  <b>آپدیت بازار</b>  |  {utc_now_str()}")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("")
+    lines.append(f"📊  <b>#Price</b>  |  {utc_now_str()}")
+    lines.append("━━━━━━━━━━━━━━━━━")
 
     for symbol, info in prices.items():
         meta = Config.PRICE_TICKERS.get(symbol, {})
@@ -87,15 +118,16 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
 
         price_str = fmt_price(price, unit)
         arrow = pct_arrow(pct)
+        emoji_change = emoji_change(pct)
 
-        lines.append(f"{emoji}  <b>{name}</b>   {price_str}   {arrow}")
+        lines.append(f"{emoji_change}  {name} | <b>{price_str}</b> ({arrow})")
 
         # Check alert threshold against last sent price
         last = last_prices.get(symbol, {}).get("price")
         if last and abs((price - last) / last * 100) >= Config.PRICE_ALERT_PCT:
-            direction = "📈 افزایش" if price > last else "📉 کاهش"
+            direction = "📈 Up" if price > last else "📉 Down"
             alerts.append(
-                f"⚠️ <b>هشدار {name}:</b> {direction} بیش از "
+                f"⚠️ <b>Alert {name}:</b> {direction} more than "
                 f"{Config.PRICE_ALERT_PCT}% → {price_str}"
             )
 
@@ -103,10 +135,6 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
         lines.append("")
         lines.append("━━━━━━━━━━━━━━━━━")
         lines.extend(alerts)
-
-    lines.append("")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("#قیمت")
 
     return "\n".join(lines)
 
@@ -142,7 +170,7 @@ class PriceMonitor:
                     f"{fmt_price(d['price'], meta.get('unit', '$'))} "
                     f"({d['pct_change']:+.2f}%)"
                 )
-            headline = f"قیمت‌ها: {' | '.join(summary_parts)}"
+            headline = f"Prices: {' | '.join(summary_parts)}"
             self._daily_events.append(f"[{utc_now_str()}] {headline}")
 
             # Append a price snapshot to the shared EventStore
@@ -163,6 +191,8 @@ class PriceMonitor:
         try:
             prices = await fetch_all_prices()
             for symbol, d in prices.items():
+                if symbol == "USDT-IRT":
+                    continue
                 meta = Config.PRICE_TICKERS.get(symbol, {})
                 name = meta.get("name", symbol)
                 unit = meta.get("unit", "$")
@@ -173,7 +203,7 @@ class PriceMonitor:
                 arrow = pct_arrow(d["pct_change"])
                 caption = (
                     f"📊 <b>{name}</b>  {price_str}  {arrow}\n"
-                    f"#نمودار #قیمت"
+                    f"#Charts #Price"
                 )
                 await self.sender.send_photo(chart_bytes, caption)
                 await asyncio.sleep(1)
@@ -189,7 +219,7 @@ class PriceMonitor:
 
             msg = (
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🌅  <b>خلاصه روزانه</b>  |  {now}\n"
+                f"🌅  <b>Daily Summary</b>  |  {now}\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"{summary}\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"

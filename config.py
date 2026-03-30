@@ -35,21 +35,22 @@ class Config:
 
     # ── Price tickers (Yahoo Finance symbols) ────────────────────────────────
     PRICE_TICKERS: dict[str, dict] = {
-        "CL=F":      {"name": "WTI Crude",    "emoji": "🛢",  "unit": "$"},
-        "BZ=F":      {"name": "Brent Crude",  "emoji": "🛢",  "unit": "$"},
         "GC=F":      {"name": "Gold",          "emoji": "🥇",  "unit": "$"},
+        "CL=F":      {"name": "WTI Crude",    "emoji": "🛢",  "unit": "$"},
+        "USDT-IRT":  {"name": "Tether",        "emoji": "🪙", "unit": "TMN"},
+        # "BZ=F":      {"name": "Brent Crude",  "emoji": "🛢",  "unit": "$"},
         "DX-Y.NYB":  {"name": "DXY",           "emoji": "💵",  "unit": ""},
         "NG=F":      {"name": "Nat Gas",        "emoji": "⚡",  "unit": "$"},
     }
 
     # ── 20 monitored Twitter accounts ────────────────────────────────────────
     MONITORED_ACCOUNTS: list[dict] = [
-        {"username": "realDonaldTrump",  "name": "Donald Trump",          "priority": 1,  "category": "🏛 Politics",   "credibility": "✅"},
+        {"username": "realDonaldTrump", "name": "Donald Trump", "priority": 1,  "category": "Politics", "credibility": "✅"},
     ]
 
     # ── Top Truth Social accounts to monitor ─────────────────────────────────
     TRUTHSOCIAL_ACCOUNTS: list[dict] = [
-        {"username": "realDonaldTrump", "name": "Donald Trump",      "priority": 1},
+        {"username": "realDonaldTrump", "name": "Donald Trump", "priority": 1},
     ]
 
     # ── Tier 1 accounts (fast-polled every 20 s) ─────────────────────────────
