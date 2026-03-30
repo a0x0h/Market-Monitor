@@ -139,6 +139,11 @@ def _is_quota_error(e: Exception) -> bool:
     return any(kw in err for kw in ("quota", "429", "resource exhausted", "rate limit"))
 
 
+def _is_not_found_error(e: Exception) -> bool:
+    err = str(e).lower()
+    return "404" in err or "not found" in err
+
+
 async def _analyze_with_gemini(tweet_text: str) -> Optional[dict]:
     if not Config.GEMINI_API_KEY:
         return None
@@ -146,7 +151,7 @@ async def _analyze_with_gemini(tweet_text: str) -> Optional[dict]:
     loop = asyncio.get_event_loop()
     for model_name in _GEMINI_MODELS:
         if now < _gemini_quota_exceeded_until.get(model_name, 0):
-            logger.debug(f"Skipping {model_name}: quota exhausted")
+            logger.debug(f"Skipping Gemini {model_name}: unavailable")
             continue
         try:
             model = genai.GenerativeModel(
@@ -164,10 +169,14 @@ async def _analyze_with_gemini(tweet_text: str) -> Optional[dict]:
         except Exception as e:
             if _is_quota_error(e):
                 _gemini_quota_exceeded_until[model_name] = now + 23 * 3600
-                logger.warning(f"Gemini {model_name} quota exhausted, skipping for 23h: {e}")
+                logger.warning(f"Gemini {model_name} quota exhausted, skipping for 23h")
+                continue
+            if _is_not_found_error(e):
+                _gemini_quota_exceeded_until[model_name] = now + 7 * 24 * 3600
+                logger.warning(f"Gemini {model_name} not available on this account, skipping for 7d")
                 continue
             logger.warning(f"Gemini {model_name} failed: {e}")
-            return None  # Non-quota error — don't try other Gemini models
+            return None  # Auth / content-filter errors — don't try other models
     return None
 
 
@@ -254,6 +263,10 @@ async def generate_plain_text(prompt: str) -> Optional[str]:
                 if _is_quota_error(e):
                     _gemini_quota_exceeded_until[model_name] = now + 23 * 3600
                     logger.warning(f"Gemini {model_name} quota exhausted (plain-text), skipping 23h")
+                    continue
+                if _is_not_found_error(e):
+                    _gemini_quota_exceeded_until[model_name] = now + 7 * 24 * 3600
+                    logger.warning(f"Gemini {model_name} not available on this account, skipping 7d")
                     continue
                 logger.warning(f"Gemini {model_name} plain-text failed: {e}")
                 return None

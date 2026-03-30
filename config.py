@@ -18,7 +18,7 @@ class Config:
     TRUTHSOCIAL_ACCESS_TOKEN: str = os.getenv("TRUTHSOCIAL_ACCESS_TOKEN", "")
 
     # ── Intervals ─────────────────────────────────────────────────────────────
-    PRICE_INTERVAL_MINUTES: int = 1
+    PRICE_INTERVAL_MINUTES: int = 5
     TWITTER_POLL_INTERVAL_MINUTES: int = 5
     TWITTER_FAST_INTERVAL_SECONDS: int = 20      # tier-1 fast poll
     TRUTHSOCIAL_FAST_INTERVAL_SECONDS: int = 60
