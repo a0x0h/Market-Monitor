@@ -1,0 +1,81 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Config:
+    # ── Telegram ─────────────────────────────────────────────────────────────
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHANNEL_ID: str = os.getenv("TELEGRAM_CHANNEL_ID", "")
+
+    # ── AI Keys ───────────────────────────────────────────────────────────────
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+
+    # ── TruthSocial OAuth ─────────────────────────────────────────────────────
+    TRUTHSOCIAL_ACCESS_TOKEN: str = os.getenv("TRUTHSOCIAL_ACCESS_TOKEN", "")
+
+    # ── Intervals ─────────────────────────────────────────────────────────────
+    PRICE_INTERVAL_MINUTES: int = 1
+    TWITTER_POLL_INTERVAL_MINUTES: int = 5
+    TWITTER_FAST_INTERVAL_SECONDS: int = 20      # tier-1 fast poll
+    TRUTHSOCIAL_FAST_INTERVAL_SECONDS: int = 30
+    NEWS_POLL_INTERVAL_MINUTES: int = 10
+    TEHRAN_TIMEZONE: str = "Asia/Tehran"
+
+    # ── Nitter instances (fallback chain) ────────────────────────────────────
+    NITTER_INSTANCES: list[str] = [
+        "https://nitter.privacydev.net",
+        "https://nitter.poast.org",
+        "https://nitter.net",
+        "https://nitter.1d4.us",
+        "https://nitter.kavin.rocks",
+    ]
+
+    # ── Price tickers (Yahoo Finance symbols) ────────────────────────────────
+    PRICE_TICKERS: dict[str, dict] = {
+        "CL=F":      {"name": "WTI Crude",    "emoji": "🛢",  "unit": "$"},
+        "BZ=F":      {"name": "Brent Crude",  "emoji": "🛢",  "unit": "$"},
+        "GC=F":      {"name": "Gold",          "emoji": "🥇",  "unit": "$"},
+        "DX-Y.NYB":  {"name": "DXY",           "emoji": "💵",  "unit": ""},
+        "NG=F":      {"name": "Nat Gas",        "emoji": "⚡",  "unit": "$"},
+    }
+
+    # ── 20 monitored Twitter accounts ────────────────────────────────────────
+    MONITORED_ACCOUNTS: list[dict] = [
+        {"username": "realDonaldTrump",  "name": "Donald Trump",          "priority": 1,  "category": "🏛 Politics",   "credibility": "✅"},
+    ]
+
+    # ── Top Truth Social accounts to monitor ─────────────────────────────────
+    TRUTHSOCIAL_ACCOUNTS: list[dict] = [
+        {"username": "realDonaldTrump", "name": "Donald Trump",      "priority": 1},
+    ]
+
+    # ── Tier 1 accounts (fast-polled every 20 s) ─────────────────────────────
+    TIER1_ACCOUNTS: list[str] = [
+        "realDonaldTrump"
+    ]
+
+    # ── RSS news feeds ────────────────────────────────────────────────────────
+    RSS_FEEDS: list[dict] = [
+        {"url": "https://feeds.reuters.com/Reuters/worldNews",   "name": "Reuters",    "tag": "#Reuters"},
+        {"url": "https://feeds.bbci.co.uk/news/world/rss.xml",   "name": "BBC World",  "tag": "#BBC"},
+        {"url": "https://www.aljazeera.com/xml/rss/all.xml",     "name": "Al Jazeera", "tag": "#AlJazeera"},
+        {"url": "https://oilprice.com/rss/main",                  "name": "OilPrice",   "tag": "#OilPrice"},
+        {"url": "https://www.middleeasteye.net/rss",              "name": "MEE",        "tag": "#MEE"},
+    ]
+
+    # ── Credibility legend ───────────────────────────────────────────────────
+    CREDIBILITY_LABELS: dict[str, str] = {
+        "✅":              "منبع معتبر",
+        "🟡":              "منبع نیمه‌معتبر",
+        "🔴 State Media":  "رسانه دولتی",
+        "⚠️":             "منبع تأییدنشده",
+    }
+
+    # ── Alert thresholds ─────────────────────────────────────────────────────
+    PRICE_ALERT_PCT: float = 1.5    # alert if price moves > 1.5% in one cycle
+    HIGH_PRIORITY_ACCOUNTS: list[str] = [
+        "realDonaldTrump"
+    ]
