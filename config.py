@@ -10,6 +10,11 @@ class Config:
     TELEGRAM_CHANNEL_ID: str = os.getenv("TELEGRAM_CHANNEL_ID", "")
     TELEGRAM_CHANNEL: str = os.getenv("TELEGRAM_CHANNEL", "")  # e.g. @mychannel, optional if ID is provided (without @)
 
+    # ── Bale Messenger ────────────────────────────────────────────────────────
+    BALE_BOT_TOKEN: str = os.getenv("BALE_BOT_TOKEN", "")
+    BALE_CHANNEL_ID: str = os.getenv("BALE_CHANNEL_ID", "")
+    BALE_CHANNEL: str = os.getenv("BALE_CHANNEL", "")  # channel username for ble.ir deep links (without @)
+
     # ── AI Keys ───────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")

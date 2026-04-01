@@ -14,7 +14,7 @@ from monitors.twitter import TwitterMonitor
 from monitors.truthsocial import TruthSocialMonitor
 from monitors.prices import PriceMonitor
 from ai.market_analysis import send_morning_analysis, send_evening_analysis
-from bot.sender import TelegramSender
+from bot.sender import TelegramSender, BaleSender, MultiSender
 import utils.screenshot as screenshot_module
 
 logging.basicConfig(
@@ -68,8 +68,16 @@ async def main() -> None:
             logger.warning(f"Failed to delete pinned system message: {e}")
 
     sender = TelegramSender(bot, Config.TELEGRAM_CHANNEL_ID)
-    truthsocial_monitor = TruthSocialMonitor(sender)
-    price_monitor = PriceMonitor(sender)
+
+    bale_sender = None
+    if Config.BALE_BOT_TOKEN and Config.BALE_CHANNEL_ID:
+        bale_sender = BaleSender(Config.BALE_BOT_TOKEN, Config.BALE_CHANNEL_ID)
+        logger.info("Bale sender initialized (channel %s)", Config.BALE_CHANNEL_ID)
+
+    multi_sender = MultiSender([sender, bale_sender]) if bale_sender else sender
+
+    truthsocial_monitor = TruthSocialMonitor(multi_sender)
+    price_monitor = PriceMonitor(sender, bale_sender=bale_sender)
 
     scheduler = AsyncIOScheduler(timezone="UTC")
 
@@ -110,9 +118,11 @@ async def main() -> None:
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
-        scheduler.shutdown(wait=False)        
+        scheduler.shutdown(wait=False)
         await truthsocial_monitor.close()
         await screenshot_module.close()
+        if bale_sender:
+            await bale_sender.close()
         await bot.session.close()
 
 

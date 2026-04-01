@@ -101,14 +101,15 @@ async def fetch_all_prices() -> dict[str, dict]:
     return prices
 
 
-def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
-    """Build the formatted Telegram price update message."""
+def build_price_message(prices: dict[str, dict], last_prices: dict, channel_link: str = "") -> str:
+    """Build the formatted price update message. channel_link is the inline URL for price values."""
+    if not channel_link:
+        channel_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
+
     lines = []
     alerts = []
 
     for symbol, info in prices.items():
-        channel_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
-
         meta = Config.PRICE_TICKERS.get(symbol, {})
         name = meta.get("name", symbol)
         emoji = meta.get("emoji", "")
@@ -141,8 +142,9 @@ def build_price_message(prices: dict[str, dict], last_prices: dict) -> str:
 
 
 class PriceMonitor:
-    def __init__(self, sender) -> None:
+    def __init__(self, sender, bale_sender=None) -> None:
         self.sender = sender
+        self.bale_sender = bale_sender
         self._daily_events: list[str] = []
 
     async def send_price_update(self) -> None:
@@ -153,9 +155,18 @@ class PriceMonitor:
                 return
 
             last_prices = load_last_prices()
-            message = build_price_message(prices, last_prices)
 
-            await self.sender.send_text(message)
+            tg_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
+            tg_message = build_price_message(prices, last_prices, tg_link)
+
+            tasks = [self.sender.send_text(tg_message)]
+
+            if self.bale_sender:
+                bale_link = f"ble.ir/{Config.BALE_CHANNEL}" if Config.BALE_CHANNEL else ""
+                bale_message = build_price_message(prices, last_prices, bale_link)
+                tasks.append(self.bale_sender.send_text(bale_message))
+
+            await asyncio.gather(*tasks, return_exceptions=True)
 
             # Persist for next cycle comparison
             save_last_prices(

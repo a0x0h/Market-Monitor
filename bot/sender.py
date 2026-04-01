@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import re
 from io import BytesIO
 
+import aiohttp
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
 from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
@@ -183,3 +185,145 @@ class TelegramSender:
         result = await self._retry(_do)
         if result is None:
             await self.send_text(trimmed_caption)
+
+
+# ── Bale Messenger Sender ─────────────────────────────────────────────────────
+
+def _html_to_bale_md(text: str) -> str:
+    """Convert Telegram HTML markup to Bale Markdown."""
+    # <b>…</b>  →  *…*
+    text = re.sub(r"<b>(.*?)</b>", r"*\1*", text, flags=re.DOTALL)
+    # <i>…</i>  →  _…_
+    text = re.sub(r"<i>(.*?)</i>", r"_\1_", text, flags=re.DOTALL)
+    # <a href='url'>label</a>  →  [label](url)
+    text = re.sub(r"<a href=['\"]([^'\"]+)['\"]>(.*?)</a>", r"[\2](\1)", text, flags=re.DOTALL)
+    # <code>…</code>  →  `…`
+    text = re.sub(r"<code>(.*?)</code>", r"`\1`", text, flags=re.DOTALL)
+    # strip any remaining tags
+    text = re.sub(r"<[^>]+>", "", text)
+    return text
+
+
+class BaleSender:
+    """Sends messages to Bale messenger via its Bot API (Telegram-compatible)."""
+
+    BASE_URL = "https://tapi.bale.ai"
+
+    def __init__(self, token: str, channel_id: str) -> None:
+        self.token = token
+        self.channel_id = str(channel_id)
+        self._session: aiohttp.ClientSession | None = None
+
+    def _url(self, method: str) -> str:
+        return f"{self.BASE_URL}/bot{self.token}/{method}"
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self) -> None:
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+    async def _post(self, method: str, **kwargs) -> dict | None:
+        """POST to Bale API. Returns None silently if connection unavailable."""
+        try:
+            session = await self._get_session()
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with session.post(self._url(method), timeout=timeout, **kwargs) as resp:
+                data = await resp.json(content_type=None)
+                if not data.get("ok"):
+                    logger.warning(f"Bale {method} failed: {data.get('description', 'unknown')}")
+                    return None
+                return data
+        except Exception as e:
+            logger.warning(f"Bale {method} unavailable: {e}")
+            return None
+
+    async def send_text(self, text: str, pin: bool = False) -> None:
+        del pin  # Bale pinning not implemented
+        trimmed = _html_to_bale_md(_trim(text, MESSAGE_LIMIT))
+        await self._post("sendMessage", json={
+            "chat_id": self.channel_id,
+            "text": trimmed,
+            "parse_mode": "Markdown",
+        })
+
+    async def send_photo(self, image_path_or_bytes, caption: str, pin: bool = False) -> None:
+        del pin  # Bale pinning not implemented
+        trimmed = _html_to_bale_md(_trim(caption, CAPTION_LIMIT))
+        if isinstance(image_path_or_bytes, str):
+            with open(image_path_or_bytes, "rb") as f:
+                photo_bytes = f.read()
+        else:
+            photo_bytes = image_path_or_bytes
+
+        form = aiohttp.FormData()
+        form.add_field("chat_id", self.channel_id)
+        form.add_field("caption", trimmed)
+        form.add_field("parse_mode", "Markdown")
+        form.add_field("photo", photo_bytes, filename="photo.jpg", content_type="image/jpeg")
+
+        result = await self._post("sendPhoto", data=form)
+        if result is None:
+            await self.send_text(trimmed)
+
+    async def send_video(self, video_path_or_bytes, caption: str, pin: bool = False) -> None:
+        del pin  # Bale pinning not implemented
+        trimmed = _html_to_bale_md(_trim(caption, CAPTION_LIMIT))
+        if isinstance(video_path_or_bytes, str):
+            with open(video_path_or_bytes, "rb") as f:
+                video_bytes = f.read()
+        else:
+            video_bytes = video_path_or_bytes
+
+        form = aiohttp.FormData()
+        form.add_field("chat_id", self.channel_id)
+        form.add_field("caption", trimmed)
+        form.add_field("parse_mode", "Markdown")
+        form.add_field("video", video_bytes, filename="video.mp4", content_type="video/mp4")
+
+        result = await self._post("sendVideo", data=form)
+        if result is None:
+            await self.send_text(trimmed)
+
+    async def send_photo_and_video(self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False) -> None:
+        del pin  # Bale pinning not implemented
+        # Send photo with caption, then video as follow-up
+        await self.send_photo(photo_bytes, caption)
+        await self.send_video(video_path_or_bytes, "")
+
+    async def send_media_group(self, images: list[bytes], caption: str) -> None:
+        if not images:
+            await self.send_text(caption)
+            return
+        # Send first image with caption; Bale media groups may have limited support
+        await self.send_photo(images[0], caption)
+
+
+# ── Multi-platform broadcaster ────────────────────────────────────────────────
+
+class MultiSender:
+    """Broadcasts the same call to multiple senders concurrently."""
+
+    def __init__(self, senders: list) -> None:
+        self.senders = senders
+
+    async def _gather(self, coros):
+        await asyncio.gather(*coros, return_exceptions=True)
+
+    async def send_text(self, text: str, pin: bool = False) -> None:
+        await self._gather([s.send_text(text, pin=pin) for s in self.senders])
+
+    async def send_photo(self, image_path_or_bytes, caption: str, pin: bool = False) -> None:
+        await self._gather([s.send_photo(image_path_or_bytes, caption, pin=pin) for s in self.senders])
+
+    async def send_video(self, video_path_or_bytes, caption: str, pin: bool = False) -> None:
+        await self._gather([s.send_video(video_path_or_bytes, caption, pin=pin) for s in self.senders])
+
+    async def send_photo_and_video(self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False) -> None:
+        await self._gather([s.send_photo_and_video(photo_bytes, video_path_or_bytes, caption, pin=pin) for s in self.senders])
+
+    async def send_media_group(self, images: list[bytes], caption: str) -> None:
+        await self._gather([s.send_media_group(images, caption) for s in self.senders])
