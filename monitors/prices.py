@@ -8,8 +8,12 @@ from config import Config
 from core.event_store import event_store, NewsEvent
 from utils.chart import generate_chart
 from utils.helpers import (
-    fmt_price, pct_arrow, utc_now_str, emoji_change,
-    load_last_prices, save_last_prices,
+    fmt_price,
+    pct_arrow,
+    utc_now_str,
+    emoji_change,
+    load_last_prices,
+    save_last_prices,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +44,9 @@ async def _fetch_ticker(
         return None, None
 
 
-async def _fetch_okex_usdt_irt(session: aiohttp.ClientSession) -> tuple[float | None, float | None]:
+async def _fetch_okex_usdt_irt(
+    session: aiohttp.ClientSession,
+) -> tuple[float | None, float | None]:
     url = "https://azapi.ok-ex.io/api/v1/asset/otc/tickers"
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
@@ -68,8 +74,10 @@ async def fetch_all_prices() -> dict[str, dict]:
             if symbol != "USDT-IRT"
         }
         usdt_task = _fetch_okex_usdt_irt(session)
-        
-        results = await asyncio.gather(*tasks.values(), usdt_task, return_exceptions=True)
+
+        results = await asyncio.gather(
+            *tasks.values(), usdt_task, return_exceptions=True
+        )
 
     usdt_result = results[-1]
     yf_results = results[:-1]
@@ -95,16 +103,22 @@ async def fetch_all_prices() -> dict[str, dict]:
             prices["USDT-IRT"] = {
                 "price": usdt_price,
                 "prev_close": usdt_price,
-                "pct_change": usdt_pct_change
+                "pct_change": usdt_pct_change,
             }
 
     return prices
 
 
-def build_price_message(prices: dict[str, dict], last_prices: dict, channel_link: str = "") -> str:
+def build_price_message(
+    prices: dict[str, dict], last_prices: dict, channel_link: str = ""
+) -> str:
     """Build the formatted price update message. channel_link is the inline URL for price values."""
     if not channel_link:
-        channel_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
+        channel_link = (
+            f"t.me/{Config.TELEGRAM_CHANNEL}"
+            if Config.TELEGRAM_CHANNEL
+            else "t.me/MonitorIR"
+        )
 
     lines = []
     alerts = []
@@ -117,15 +131,23 @@ def build_price_message(prices: dict[str, dict], last_prices: dict, channel_link
         price = info["price"]
         pct = info["pct_change"]
 
+        last = last_prices.get(symbol, {}).get("price")
+        last_diff = last_prices.get(symbol, {}).get("last_different_price")
+
+        # Tether local percentage calculation
+        if symbol == "USDT-IRT" and last_diff and last_diff != 0:
+            pct = ((price - last_diff) / last_diff) * 100
+
         price_str = fmt_price(price, unit)
         arrow = pct_arrow(pct)
         # Avoid shadowing the function name
         e_change = emoji_change(pct)
 
-        lines.append(f"{e_change}  {name} | <b><a href='{channel_link}'>{price_str}</a></b> ({arrow})")
+        lines.append(
+            f"{e_change}  {name} | <b><a href='{channel_link}'>{price_str}</a></b> ({arrow})"
+        )
 
         # Check alert threshold against last sent price
-        last = last_prices.get(symbol, {}).get("price")
         if last and abs((price - last) / last * 100) >= Config.PRICE_ALERT_PCT:
             direction = "📈 Up" if price > last else "📉 Down"
             alerts.append(
@@ -156,13 +178,19 @@ class PriceMonitor:
 
             last_prices = load_last_prices()
 
-            tg_link = f"t.me/{Config.TELEGRAM_CHANNEL}" if Config.TELEGRAM_CHANNEL else "t.me/MonitorIR"
+            tg_link = (
+                f"t.me/{Config.TELEGRAM_CHANNEL}"
+                if Config.TELEGRAM_CHANNEL
+                else "t.me/MonitorIR"
+            )
             tg_message = build_price_message(prices, last_prices, tg_link)
 
             tasks = [self.sender.send_text(tg_message)]
 
             if self.bale_sender:
-                bale_link = f"ble.ir/{Config.BALE_CHANNEL}" if Config.BALE_CHANNEL else ""
+                bale_link = (
+                    f"ble.ir/{Config.BALE_CHANNEL}" if Config.BALE_CHANNEL else ""
+                )
                 if Config.TELEGRAM_CHANNEL:
                     bale_link += f" | t.me/{Config.TELEGRAM_CHANNEL}"
                 bale_message = build_price_message(prices, last_prices, bale_link)
@@ -171,9 +199,20 @@ class PriceMonitor:
             await asyncio.gather(*tasks, return_exceptions=True)
 
             # Persist for next cycle comparison
-            save_last_prices(
-                {sym: {"price": d["price"]} for sym, d in prices.items()}
-            )
+            to_save = {}
+            for sym, d in prices.items():
+                curr_p = d["price"]
+                old_p = last_prices.get(sym, {}).get("price")
+                old_diff = last_prices.get(sym, {}).get("last_different_price")
+
+                if old_p and curr_p != old_p:
+                    diff_p = old_p
+                else:
+                    diff_p = old_diff if old_diff else curr_p
+
+                to_save[sym] = {"price": curr_p, "last_different_price": diff_p}
+
+            save_last_prices(to_save)
 
             # Store event summary for daily report
             summary_parts = []
@@ -188,14 +227,16 @@ class PriceMonitor:
             self._daily_events.append(f"[{utc_now_str()}] {headline}")
 
             # Append a price snapshot to the shared EventStore
-            event_store.append(NewsEvent(
-                source="Price",
-                source_tag="#قیمت",
-                headline=headline[:300],
-                oil_sentiment="NEUTRAL",
-                urgency="NORMAL",
-                keywords=["oil", "price", "market"],
-            ))
+            event_store.append(
+                NewsEvent(
+                    source="Price",
+                    source_tag="#قیمت",
+                    headline=headline[:300],
+                    oil_sentiment="NEUTRAL",
+                    urgency="NORMAL",
+                    keywords=["oil", "price", "market"],
+                )
+            )
 
         except Exception as e:
             logger.error(f"Price update failed: {e}", exc_info=True)
@@ -215,10 +256,7 @@ class PriceMonitor:
                     continue
                 price_str = fmt_price(d["price"], unit)
                 arrow = pct_arrow(d["pct_change"])
-                caption = (
-                    f"📊 <b>{name}</b>  {price_str}  {arrow}\n"
-                    f"#Charts #Price"
-                )
+                caption = f"📊 <b>{name}</b>  {price_str}  {arrow}\n#Charts #Price"
                 await self.sender.send_photo(chart_bytes, caption)
                 await asyncio.sleep(1)
         except Exception as e:

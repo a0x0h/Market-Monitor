@@ -41,7 +41,7 @@ class TelegramSender:
             except Exception as e:
                 logger.warning(f"Send attempt {attempt + 1} failed: {e}")
                 if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         return None
 
     async def send_text(self, text: str, pin: bool = False) -> None:
@@ -58,14 +58,21 @@ class TelegramSender:
         result = await self._retry(_do)
         if pin and result:
             try:
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id, disable_notification=True)
+                await self.bot.pin_chat_message(
+                    chat_id=self.channel_id,
+                    message_id=result.message_id,
+                    disable_notification=True,
+                )
             except Exception as e:
                 logger.warning(f"Failed to pin text message: {e}")
 
-    async def send_photo(self, image_path_or_bytes, caption: str, pin: bool = False) -> None:
+    async def send_photo(
+        self, image_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
         from aiogram.types import BufferedInputFile, FSInputFile
+
         trimmed_caption = _trim(caption, CAPTION_LIMIT)
-        
+
         if isinstance(image_path_or_bytes, str):
             file = FSInputFile(image_path_or_bytes)
         else:
@@ -83,7 +90,11 @@ class TelegramSender:
 
         if pin and result:
             try:
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id, disable_notification=True)
+                await self.bot.pin_chat_message(
+                    chat_id=self.channel_id,
+                    message_id=result.message_id,
+                    disable_notification=True,
+                )
             except Exception as e:
                 logger.warning(f"Failed to pin photo message: {e}")
 
@@ -91,11 +102,14 @@ class TelegramSender:
         if result is None:
             await self.send_text(trimmed_caption, pin=pin)
 
-    async def send_video(self, video_path_or_bytes, caption: str, pin: bool = False) -> None:
+    async def send_video(
+        self, video_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
         """Send a video file. Falls back to send_text on failure."""
         from aiogram.types import BufferedInputFile, FSInputFile
+
         trimmed = _trim(caption, CAPTION_LIMIT)
-        
+
         if isinstance(video_path_or_bytes, str):
             file = FSInputFile(video_path_or_bytes, filename="video.mp4")
         else:
@@ -111,21 +125,32 @@ class TelegramSender:
             )
 
         result = await self._retry(_do)
-        
+
         if pin and result:
             try:
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result.message_id, disable_notification=True)
+                await self.bot.pin_chat_message(
+                    chat_id=self.channel_id,
+                    message_id=result.message_id,
+                    disable_notification=True,
+                )
             except Exception as e:
                 logger.warning(f"Failed to pin video message: {e}")
 
         if result is None:
             await self.send_text(trimmed, pin=pin)
 
-    async def send_photo_and_video(self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False) -> None:
-        from aiogram.types import InputMediaPhoto, InputMediaVideo, BufferedInputFile, FSInputFile
+    async def send_photo_and_video(
+        self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
+        from aiogram.types import (
+            InputMediaPhoto,
+            InputMediaVideo,
+            BufferedInputFile,
+            FSInputFile,
+        )
 
         trimmed_caption = _trim(caption, CAPTION_LIMIT)
-        
+
         photo_file = BufferedInputFile(photo_bytes, filename="tweet.jpg")
         if isinstance(video_path_or_bytes, str):
             video_file = FSInputFile(video_path_or_bytes, filename="video.mp4")
@@ -133,8 +158,10 @@ class TelegramSender:
             video_file = BufferedInputFile(video_path_or_bytes, filename="video.mp4")
 
         media = [
-            InputMediaPhoto(media=photo_file, caption=trimmed_caption, parse_mode="HTML"),
-            InputMediaVideo(media=video_file, supports_streaming=True)
+            InputMediaPhoto(
+                media=photo_file, caption=trimmed_caption, parse_mode="HTML"
+            ),
+            InputMediaVideo(media=video_file, supports_streaming=True),
         ]
 
         async def _do():
@@ -144,14 +171,18 @@ class TelegramSender:
             )
 
         result_messages = await self._retry(_do)
-        
+
         if pin and result_messages:
             try:
                 # pin the first message in the group
-                await self.bot.pin_chat_message(chat_id=self.channel_id, message_id=result_messages[0].message_id, disable_notification=True)
+                await self.bot.pin_chat_message(
+                    chat_id=self.channel_id,
+                    message_id=result_messages[0].message_id,
+                    disable_notification=True,
+                )
             except Exception as e:
                 logger.warning(f"Failed to pin album message: {e}")
-                
+
         if not result_messages:
             # fallback if media group fails
             await self.send_photo(photo_bytes, caption, pin=pin)
@@ -189,6 +220,7 @@ class TelegramSender:
 
 # ── Bale Messenger Sender ─────────────────────────────────────────────────────
 
+
 def _html_to_bale_md(text: str) -> str:
     """Convert Telegram HTML markup to Bale Markdown."""
     # <b>…</b>  →  *…*
@@ -196,7 +228,9 @@ def _html_to_bale_md(text: str) -> str:
     # <i>…</i>  →  _…_
     text = re.sub(r"<i>(.*?)</i>", r"_\1_", text, flags=re.DOTALL)
     # <a href='url'>label</a>  →  [label](url)
-    text = re.sub(r"<a href=['\"]([^'\"]+)['\"]>(.*?)</a>", r"[\2](\1)", text, flags=re.DOTALL)
+    text = re.sub(
+        r"<a href=['\"]([^'\"]+)['\"]>(.*?)</a>", r"[\2](\1)", text, flags=re.DOTALL
+    )
     # <code>…</code>  →  `…`
     text = re.sub(r"<code>(.*?)</code>", r"`\1`", text, flags=re.DOTALL)
     # strip any remaining tags
@@ -231,10 +265,14 @@ class BaleSender:
         try:
             session = await self._get_session()
             timeout = aiohttp.ClientTimeout(total=30)
-            async with session.post(self._url(method), timeout=timeout, **kwargs) as resp:
+            async with session.post(
+                self._url(method), timeout=timeout, **kwargs
+            ) as resp:
                 data = await resp.json(content_type=None)
                 if not data.get("ok"):
-                    logger.warning(f"Bale {method} failed: {data.get('description', 'unknown')}")
+                    logger.warning(
+                        f"Bale {method} failed: {data.get('description', 'unknown')}"
+                    )
                     return None
                 return data
         except Exception as e:
@@ -242,16 +280,28 @@ class BaleSender:
             return None
 
     async def send_text(self, text: str, pin: bool = False) -> None:
-        del pin  # Bale pinning not implemented
         trimmed = _html_to_bale_md(_trim(text, MESSAGE_LIMIT))
-        await self._post("sendMessage", json={
-            "chat_id": self.channel_id,
-            "text": trimmed,
-            "parse_mode": "Markdown",
-        })
+        result = await self._post(
+            "sendMessage",
+            json={
+                "chat_id": self.channel_id,
+                "text": trimmed,
+                "parse_mode": "Markdown",
+            },
+        )
+        if pin and result and "result" in result and "message_id" in result["result"]:
+            await self._post(
+                "pinChatMessage",
+                json={
+                    "chat_id": self.channel_id,
+                    "message_id": result["result"]["message_id"],
+                    "disable_notification": True,
+                },
+            )
 
-    async def send_photo(self, image_path_or_bytes, caption: str, pin: bool = False) -> None:
-        del pin  # Bale pinning not implemented
+    async def send_photo(
+        self, image_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
         trimmed = _html_to_bale_md(_trim(caption, CAPTION_LIMIT))
         if isinstance(image_path_or_bytes, str):
             with open(image_path_or_bytes, "rb") as f:
@@ -263,14 +313,26 @@ class BaleSender:
         form.add_field("chat_id", self.channel_id)
         form.add_field("caption", trimmed)
         form.add_field("parse_mode", "Markdown")
-        form.add_field("photo", photo_bytes, filename="photo.jpg", content_type="image/jpeg")
+        form.add_field(
+            "photo", photo_bytes, filename="photo.jpg", content_type="image/jpeg"
+        )
 
         result = await self._post("sendPhoto", data=form)
         if result is None:
-            await self.send_text(trimmed)
+            await self.send_text(trimmed, pin=pin)
+        elif pin and "result" in result and "message_id" in result["result"]:
+            await self._post(
+                "pinChatMessage",
+                json={
+                    "chat_id": self.channel_id,
+                    "message_id": result["result"]["message_id"],
+                    "disable_notification": True,
+                },
+            )
 
-    async def send_video(self, video_path_or_bytes, caption: str, pin: bool = False) -> None:
-        del pin  # Bale pinning not implemented
+    async def send_video(
+        self, video_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
         trimmed = _html_to_bale_md(_trim(caption, CAPTION_LIMIT))
         if isinstance(video_path_or_bytes, str):
             with open(video_path_or_bytes, "rb") as f:
@@ -282,16 +344,28 @@ class BaleSender:
         form.add_field("chat_id", self.channel_id)
         form.add_field("caption", trimmed)
         form.add_field("parse_mode", "Markdown")
-        form.add_field("video", video_bytes, filename="video.mp4", content_type="video/mp4")
+        form.add_field(
+            "video", video_bytes, filename="video.mp4", content_type="video/mp4"
+        )
 
         result = await self._post("sendVideo", data=form)
         if result is None:
-            await self.send_text(trimmed)
+            await self.send_text(trimmed, pin=pin)
+        elif pin and "result" in result and "message_id" in result["result"]:
+            await self._post(
+                "pinChatMessage",
+                json={
+                    "chat_id": self.channel_id,
+                    "message_id": result["result"]["message_id"],
+                    "disable_notification": True,
+                },
+            )
 
-    async def send_photo_and_video(self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False) -> None:
-        del pin  # Bale pinning not implemented
+    async def send_photo_and_video(
+        self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
         # Send photo with caption, then video as follow-up
-        await self.send_photo(photo_bytes, caption)
+        await self.send_photo(photo_bytes, caption, pin=pin)
         await self.send_video(video_path_or_bytes, "")
 
     async def send_media_group(self, images: list[bytes], caption: str) -> None:
@@ -303,6 +377,7 @@ class BaleSender:
 
 
 # ── Multi-platform broadcaster ────────────────────────────────────────────────
+
 
 class MultiSender:
     """Broadcasts the same call to multiple senders concurrently."""
@@ -316,14 +391,31 @@ class MultiSender:
     async def send_text(self, text: str, pin: bool = False) -> None:
         await self._gather([s.send_text(text, pin=pin) for s in self.senders])
 
-    async def send_photo(self, image_path_or_bytes, caption: str, pin: bool = False) -> None:
-        await self._gather([s.send_photo(image_path_or_bytes, caption, pin=pin) for s in self.senders])
+    async def send_photo(
+        self, image_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
+        await self._gather(
+            [s.send_photo(image_path_or_bytes, caption, pin=pin) for s in self.senders]
+        )
 
-    async def send_video(self, video_path_or_bytes, caption: str, pin: bool = False) -> None:
-        await self._gather([s.send_video(video_path_or_bytes, caption, pin=pin) for s in self.senders])
+    async def send_video(
+        self, video_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
+        await self._gather(
+            [s.send_video(video_path_or_bytes, caption, pin=pin) for s in self.senders]
+        )
 
-    async def send_photo_and_video(self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False) -> None:
-        await self._gather([s.send_photo_and_video(photo_bytes, video_path_or_bytes, caption, pin=pin) for s in self.senders])
+    async def send_photo_and_video(
+        self, photo_bytes, video_path_or_bytes, caption: str, pin: bool = False
+    ) -> None:
+        await self._gather(
+            [
+                s.send_photo_and_video(
+                    photo_bytes, video_path_or_bytes, caption, pin=pin
+                )
+                for s in self.senders
+            ]
+        )
 
     async def send_media_group(self, images: list[bytes], caption: str) -> None:
         await self._gather([s.send_media_group(images, caption) for s in self.senders])
