@@ -163,6 +163,8 @@ class PriceMonitor:
 
             if self.bale_sender:
                 bale_link = f"ble.ir/{Config.BALE_CHANNEL}" if Config.BALE_CHANNEL else ""
+                if Config.TELEGRAM_CHANNEL:
+                    bale_link += f" | t.me/{Config.TELEGRAM_CHANNEL}"
                 bale_message = build_price_message(prices, last_prices, bale_link)
                 tasks.append(self.bale_sender.send_text(bale_message))
 

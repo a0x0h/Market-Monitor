@@ -44,6 +44,7 @@ class Config:
         "CL=F":      {"name": "WTI Crude",    "emoji": "🛢",  "unit": "$"},
         "BZ=F":      {"name": "Brent Crude",  "emoji": "🛢",  "unit": "$"},
         "GC=F":      {"name": "Gold",          "emoji": "🥇",  "unit": "$"},
+        "SI=F":      {"name": "Silver",        "emoji": "🥈",  "unit": "$"},
         "USDT-IRT":  {"name": "Tether",        "emoji": "🪙", "unit": "TMN"},
         "DX-Y.NYB":  {"name": "DXY",           "emoji": "💵",  "unit": ""},
         "NG=F":      {"name": "Nat Gas",        "emoji": "⚡",  "unit": "$"},
