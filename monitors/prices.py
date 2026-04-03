@@ -155,6 +155,40 @@ def build_price_message(
                 f"{Config.PRICE_ALERT_PCT}% → {price_str}"
             )
 
+    # 18K Gold Implied Calculation
+    # User formula: (Gold price / 31.1034) * Tether price * (18/24) -> 3/4
+    gold_info = prices.get("GC=F")
+    tether_info = prices.get("USDT-IRT")
+    if (
+        gold_info
+        and tether_info
+        and gold_info.get("price")
+        and tether_info.get("price")
+    ):
+        g_price = gold_info["price"]
+        t_price = tether_info["price"]
+        # Convert Oz to Gram, then multi by purity
+        implied_18k_price = (g_price * t_price / 31.1034) * 0.75
+
+        g_prev = gold_info.get("prev_close")
+        t_prev = tether_info.get("prev_close")
+        pct_18k = 0.0
+        if g_prev and t_prev and g_prev > 0 and t_prev > 0:
+            implied_18k_prev_price = (g_prev * t_prev / 31.1034) * 0.75
+            pct_18k = (
+                (implied_18k_price - implied_18k_prev_price) / implied_18k_prev_price
+            ) * 100
+
+        # Determine last stored 18K pct maybe? or just calculate from prev close.
+        # Add to the message
+        unit_18k = Config.PRICE_TICKERS.get("USDT-IRT", {}).get("unit", "TMN")
+        name_18k = "18K Gold (Implied)"
+        price_str_18k = fmt_price(implied_18k_price, unit_18k)
+
+        lines.append(
+            f"{emoji_change(pct_18k)}  {name_18k} | <b><a href='{channel_link}'>{price_str_18k}</a></b> ({pct_arrow(pct_18k)})"
+        )
+
     if alerts:
         lines.append("")
         lines.append("━━━━━━━━━━━━━━━━━")
@@ -169,7 +203,7 @@ class PriceMonitor:
         self.bale_sender = bale_sender
         self._daily_events: list[str] = []
 
-    async def send_price_update(self) -> None:
+    async def send_price_update(self, with_screenshot: bool = False) -> None:
         try:
             prices = await fetch_all_prices()
             if not prices:
@@ -179,22 +213,39 @@ class PriceMonitor:
             last_prices = load_last_prices()
 
             tg_link = (
-                f"t.me/{Config.TELEGRAM_CHANNEL}"
+                f"https://t.me/{Config.TELEGRAM_CHANNEL}"
                 if Config.TELEGRAM_CHANNEL
-                else "t.me/MonitorIR"
+                else "https://t.me/MonitorIR"
             )
             tg_message = build_price_message(prices, last_prices, tg_link)
 
-            tasks = [self.sender.send_text(tg_message)]
+            tasks = []
+
+            # Optionally grab screenshot from oilprice.com
+            png = None
+            if with_screenshot:
+                import utils.screenshot as screenshot_module
+
+                png = await screenshot_module.screenshot_oilprice()
+
+            if png:
+                tasks.append(self.sender.send_photo(png, tg_message))
+            else:
+                tasks.append(self.sender.send_text(tg_message))
 
             if self.bale_sender:
                 bale_link = (
-                    f"ble.ir/{Config.BALE_CHANNEL}" if Config.BALE_CHANNEL else ""
+                    f"https://ble.ir/{Config.BALE_CHANNEL}"
+                    if Config.BALE_CHANNEL
+                    else "https://ble.ir/MonitorIR"
                 )
-                if Config.TELEGRAM_CHANNEL:
-                    bale_link += f" | t.me/{Config.TELEGRAM_CHANNEL}"
                 bale_message = build_price_message(prices, last_prices, bale_link)
-                tasks.append(self.bale_sender.send_text(bale_message))
+
+                # Assume sender has send_photo method
+                if png and hasattr(self.bale_sender, "send_photo"):
+                    tasks.append(self.bale_sender.send_photo(png, bale_message))
+                else:
+                    tasks.append(self.bale_sender.send_text(bale_message))
 
             await asyncio.gather(*tasks, return_exceptions=True)
 

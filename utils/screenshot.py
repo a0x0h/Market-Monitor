@@ -152,6 +152,34 @@ async def screenshot_nitter(
         await ctx.close()
 
 
+async def screenshot_oilprice() -> bytes | None:
+    """Capture screenshot of the first oilprices__table on oilprice.com"""
+    browser = await _get_browser()
+    if not browser:
+        return None
+
+    ctx = await browser.new_context(
+        viewport={"width": 700, "height": 1000},
+        device_scale_factor=2,
+    )
+    page = await ctx.new_page()
+    try:
+        await page.goto(
+            "https://oilprice.com/oil-price-charts/",
+            wait_until="domcontentloaded",
+            timeout=30_000,
+        )
+        table = await page.wait_for_selector(    
+        if table:
+            return await table.screenshot(type="png")
+        return None
+    except Exception as exc:
+        logger.warning("Oilprice screenshot failed: %s", exc)
+        return None
+    finally:
+        await ctx.close()
+
+
 def _extract_ts_status_id(post_url: str) -> str | None:
     match = re.search(r"/(?:posts|statuses)/(\d+)(?:/embed)?/?$", post_url)
     return match.group(1) if match else None
@@ -164,7 +192,7 @@ if _BOTASAURUS_AVAILABLE:
         add_arguments=["--no-sandbox", "--disable-dev-shm-usage"],
         window_size=(770, 1000),
         output=None,
-        reuse_driver=True, # Keep browser open to save resources
+        reuse_driver=True,  # Keep browser open to save resources
     )
     def _boto_screenshot_truthsocial_sync(
         driver: BotoDriver, data: dict

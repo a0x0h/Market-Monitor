@@ -92,13 +92,25 @@ async def main() -> None:
 
     # ── Layer 2: Price updates ────────────────────────────────────────────────
 
-    # Price update every 5 min
+    # Price update every 5 min (text only)
     scheduler.add_job(
         price_monitor.send_price_update,
         "interval",
         minutes=Config.PRICE_INTERVAL_MINUTES,
         id="price_update",
         name="Price Update",
+    )
+
+    # Price update every 1 hour (with oilprice screenshot)
+    async def hourly_price_update():
+        await price_monitor.send_price_update(with_screenshot=True)
+
+    scheduler.add_job(
+        hourly_price_update,
+        "interval",
+        hours=1,
+        id="hourly_price_update",
+        name="Hourly Price Update with Screenshot",
     )
 
     # ── Layer 3: AI market analysis ───────────────────────────────────────────
