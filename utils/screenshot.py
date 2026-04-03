@@ -56,15 +56,23 @@ async def _get_browser():
     async with _get_lock():
         if _browser is None or not _browser.is_connected():
             _pw_instance = await async_playwright().start()
-            _browser = await _pw_instance.chromium.launch(
-                headless=True,
-                args=[
+            
+            launch_kwargs = {
+                "headless": True,
+                "args": [
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-gpu",
                     "--disable-dev-shm-usage",
-                ],
-            )
+                ]
+            }
+            
+            # Check for proxy in environment
+            proxy_url = os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+            if proxy_url:
+                launch_kwargs["proxy"] = {"server": proxy_url}
+
+            _browser = await _pw_instance.chromium.launch(**launch_kwargs)
     return _browser
 
 
@@ -169,7 +177,9 @@ async def screenshot_oilprice() -> bytes | None:
             wait_until="domcontentloaded",
             timeout=30_000,
         )
-        table = await page.wait_for_selector(    
+        table = await page.wait_for_selector(
+            "xpath=(//table[@class='oilprices__table'])[1]",
+            timeout=20_000)
         if table:
             return await table.screenshot(type="png")
         return None
