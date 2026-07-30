@@ -240,6 +240,8 @@ if _BOTASAURUS_AVAILABLE:
         tweet_selector = "a.block.bg-white"
         try:
             el = driver.select(tweet_selector)
+            if isinstance(el, list):
+                el = el[0] if el else None
             if not el:
                 raise Exception(f"Element not found: {tweet_selector}")
             driver.run_js("document.documentElement.classList.add('dark');")

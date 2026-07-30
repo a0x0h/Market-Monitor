@@ -18,6 +18,7 @@ class Config:
     # ── AI Keys ───────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    MASSIVE_API_KEY: str = os.getenv("MASSIVE_API_KEY", "")
 
     # ── TruthSocial OAuth ─────────────────────────────────────────────────────
     TRUTHSOCIAL_ACCESS_TOKEN: str = os.getenv("TRUTHSOCIAL_ACCESS_TOKEN", "")

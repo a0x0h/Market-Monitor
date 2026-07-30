@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 import aiohttp
+import os
 
 from config import Config
 from core.event_store import event_store, NewsEvent
@@ -23,6 +24,9 @@ _YF_HEADERS = {
 }
 
 
+_MASSIVE_BASE = os.getenv("MASSIVE_BASE_URL", "https://api.massive.com/v3")
+
+
 async def _fetch_ticker(
     session: aiohttp.ClientSession,
     symbol: str,
@@ -41,6 +45,54 @@ async def _fetch_ticker(
             return float(price) if price else None, float(prev) if prev else None
     except Exception as e:
         logger.warning(f"Failed to fetch {symbol}: {e}")
+        return None, None
+
+
+async def _fetch_massive_ticker(
+    session: aiohttp.ClientSession, symbol: str
+) -> tuple[float | None, float | None]:
+    """Try Massive REST market quote for `symbol`. Return (price, prev_close) or (None, None)."""
+    api_key = Config.MASSIVE_API_KEY if hasattr(Config, "MASSIVE_API_KEY") else os.getenv("MASSIVE_API_KEY", "")
+    headers = {"User-Agent": _YF_HEADERS["User-Agent"]}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # Best-effort URL: Massive docs show v3 REST surface; query `markets/quotes` by ticker.
+    url = f"{_MASSIVE_BASE}/markets/quotes?ticker={symbol}"
+    try:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                logger.debug(f"Massive fetch {symbol} HTTP {resp.status}")
+                return None, None
+            data = await resp.json(content_type=None)
+
+            # Flexible parsing: Massive responses vary; try common fields
+            results = None
+            if isinstance(data, dict):
+                results = data.get("results") or data.get("data") or data
+
+            item = None
+            if isinstance(results, list) and results:
+                item = results[0]
+            elif isinstance(results, dict):
+                # may nest under 'quote' or be the quote itself
+                item = results.get("quote") or results
+
+            if not item:
+                return None, None
+
+            price = item.get("last") or item.get("price") or item.get("close") or item.get("regularMarketPrice")
+            prev = (
+                item.get("previousClose")
+                or item.get("prev_close")
+                or item.get("previous")
+                or item.get("prev")
+            )
+            return (float(price), float(prev)) if price and prev else (
+                (float(price), None) if price else (None, None)
+            )
+    except Exception as e:
+        logger.debug(f"Massive fetch failed for {symbol}: {e}")
         return None, None
 
 
@@ -68,8 +120,9 @@ async def _fetch_okex_usdt_irt(
 async def fetch_all_prices() -> dict[str, dict]:
     """Fetch all configured tickers concurrently."""
     async with aiohttp.ClientSession(headers=_YF_HEADERS) as session:
+        # Use Massive API only for configured tickers (except USDT-IRT)
         tasks = {
-            symbol: _fetch_ticker(session, symbol)
+            symbol: _fetch_massive_ticker(session, symbol)
             for symbol in Config.PRICE_TICKERS
             if symbol != "USDT-IRT"
         }
