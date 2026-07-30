@@ -120,12 +120,17 @@ async def _fetch_okex_usdt_irt(
 async def fetch_all_prices() -> dict[str, dict]:
     """Fetch all configured tickers concurrently."""
     async with aiohttp.ClientSession(headers=_YF_HEADERS) as session:
-        # Use Massive API only for configured tickers (except USDT-IRT)
-        tasks = {
-            symbol: _fetch_massive_ticker(session, symbol)
-            for symbol in Config.PRICE_TICKERS
-            if symbol != "USDT-IRT"
-        }
+        # Prefer Massive when configured, but keep Yahoo as a fallback so one
+        # unavailable market data source does not collapse the whole price post.
+        tasks = {}
+        for symbol in Config.PRICE_TICKERS:
+            if symbol == "USDT-IRT":
+                continue
+            if Config.MASSIVE_API_KEY:
+                tasks[symbol] = _fetch_massive_ticker(session, symbol)
+            else:
+                tasks[symbol] = _fetch_ticker(session, symbol)
+
         usdt_task = _fetch_okex_usdt_irt(session)
 
         results = await asyncio.gather(
@@ -138,7 +143,13 @@ async def fetch_all_prices() -> dict[str, dict]:
     prices = {}
     for symbol, result in zip(tasks.keys(), yf_results):
         if isinstance(result, Exception) or result is None:
-            continue
+            if Config.MASSIVE_API_KEY:
+                fallback_price, fallback_prev = await _fetch_ticker(session, symbol)
+                if fallback_price is None:
+                    continue
+                result = (fallback_price, fallback_prev)
+            else:
+                continue
         price, prev = result
         if price is None:
             continue
